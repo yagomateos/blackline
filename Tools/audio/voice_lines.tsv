@@ -1,0 +1,38 @@
+# Frases con voz (Bloque 7). Fuente única: gen_voices.py las sintetiza y build_m01_greybox.py lee el texto
+# de las de radio por su id (así subtítulo y voz no se desincronizan).
+# id	tipo	quién/categoría	voz	tono	velocidad	texto
+# tipo: radio (filtro de radio, 2D) | bark (voz gritada de la IA, 3D). Voces de Windows: Pablo / Laura / Helena.
+# Barks: id = <Categoría>_<n>; se generan con las 3 voces de milicianos (V1..V3) definidas en gen_voices.py.
+M01_Brief_01	radio	TORRE	Pablo	-14%	1.0	Sable 2-1, aquí Torre. Varek no da señales desde las cuatro de la mañana.
+M01_Brief_02	radio	TORRE	Pablo	-14%	1.0	Su refugio está al final de la calle principal, al otro lado del puerto. Necesitamos su disco duro.
+M01_Brief_03	radio	TORRE	Pablo	-14%	1.0	La Columna Vesk patrulla el puerto. Entrad por los callejones del norte y evitad el ruido mientras podáis.
+M01_Brief_04	radio	SABLE 2-1	Pablo	-3%	1.05	Recibido, Torre. En movimiento.
+M01_Patio	radio	TORRE	Pablo	-14%	1.0	Patio de contenedores a la vista. Dos patrullas y un centinela en la puerta. Vuestra decisión.
+M01_Control	radio	TORRE	Pablo	-14%	1.0	Hay un control en la carretera, al sur de la puerta. Tenéis que pasar por ahí.
+M01_ControlOk	radio	TORRE	Pablo	-14%	1.0	Control despejado. El refugio de Varek está al este, al final de la calle principal.
+M01_Avanzamos	radio	SABLE 2-1	Pablo	-3%	1.05	Entendido. Avanzamos.
+M01_Local	radio	TORRE	Pablo	-14%	1.0	Es ese local. Varek guardaba el disco junto a su portátil. Buscadlo.
+M01_Disco	radio	SABLE 2-1	Pablo	-3%	1.05	Tengo el disco. Ni rastro de Varek.
+M01_Debrief	radio	TORRE	Pablo	-14%	1.0	Recibido, Sable. Id al punto de extracción en el muelle. Buen trabajo.
+Suspicious_1	bark	Suspicious				¿Hay alguien ahí?
+Suspicious_2	bark	Suspicious				¿Qué ha sido eso?
+HeardShots_1	bark	HeardShots				¡Disparos! ¡Por allí!
+HeardShots_2	bark	HeardShots				¡Tiros! ¡Atentos todos!
+Contact_1	bark	Contact				¡Contacto! ¡A cubierto!
+Contact_2	bark	Contact				¡Ahí está! ¡Fuego!
+Hit_1	bark	Hit				¡Me han dado!
+Hit_2	bark	Hit				¡Ah! ¡Estoy herido!
+Reload_1	bark	Reload				¡Recargando, cubridme!
+Reload_2	bark	Reload				¡Cambio de cargador!
+Flank_1	bark	Flank				¡Lo rodeo por el flanco!
+Flank_2	bark	Flank				¡Voy por la izquierda!
+Reposition_1	bark	Reposition				¡Me tiene a tiro, cambio de posición!
+Reposition_2	bark	Reposition				¡Me muevo!
+Chase_1	bark	Chase				¡Se esconde! Voy a por él.
+Chase_2	bark	Chase				¡No lo dejéis escapar!
+GiveUp_1	bark	GiveUp				Nada. Vuelvo a mi puesto.
+GiveUp_2	bark	GiveUp				Falsa alarma.
+Lost_1	bark	Lost				Lo hemos perdido. Atentos.
+Lost_2	bark	Lost				¿Dónde se ha metido?
+ManDown_1	bark	ManDown				¡Hombre abajo!
+ManDown_2	bark	ManDown				¡Han caído! ¡Cuidado!
