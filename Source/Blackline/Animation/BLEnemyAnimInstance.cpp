@@ -22,13 +22,66 @@ namespace
 	/** Cuánto baja la pelvis al agacharse (cm). */
 	constexpr float CrouchDrop = 42.f;
 
-	FCompactPoseBoneIndex FindEnemyBone(const FBoneContainer& Bones, FName Name)
+	FCompactPoseBoneIndex FindEnemyBoneUnchecked(const FBoneContainer& Bones, FName Name)
 	{
 		// Por el esqueleto (no por índice de malla): en la build cocinada el contenedor puede no incluir todos los huesos
 		const USkeleton* Skel = Bones.GetSkeletonAsset();
 		const int32 SkelIndex = Skel ? Skel->GetReferenceSkeleton().FindBoneIndex(Name) : INDEX_NONE;
 		return SkelIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.GetCompactPoseIndexFromSkeletonIndex(SkelIndex);
 	}
+
+	/** Índice válido en la pose que se está evaluando (o INDEX_NONE). */
+	FCompactPoseBoneIndex FindEnemyBone(const FCompactPose& Pose, FName Name)
+	{
+		const FCompactPoseBoneIndex I = FindEnemyBoneUnchecked(Pose.GetBoneContainer(), Name);
+		return I != INDEX_NONE && I.GetInt() >= 0 && I.GetInt() < Pose.GetNumBones() ? I : FCompactPoseBoneIndex(INDEX_NONE);
+	}
+
+	/**
+	 * Transformaciones en espacio de componente de una pose compacta, sin FCSPose (en la build cocinada
+	 * SafeSetCSBoneTransforms fallaba con estas poses). Los padres van antes que los hijos en la pose compacta.
+	 * Set() escribe la local del hueso a partir de la de su padre y recalcula las de los hijos.
+	 */
+	struct FSimpleCSPose
+	{
+		FCompactPose& Pose;
+		TArray<FTransform> CS;
+		TArray<int32> Parent;
+
+		explicit FSimpleCSPose(FCompactPose& InPose) : Pose(InPose)
+		{
+			const int32 N = Pose.GetNumBones();
+			CS.SetNum(N);
+			Parent.SetNum(N);
+			for (const FCompactPoseBoneIndex I : Pose.ForEachBoneIndex())
+			{
+				Parent[I.GetInt()] = Pose.GetParentBoneIndex(I).GetInt();
+			}
+			Recompute(0);
+		}
+		void Recompute(int32 From)
+		{
+			for (int32 i = From; i < CS.Num(); ++i)
+			{
+				const int32 P = Parent[i];
+				CS[i] = (P >= 0 && P < i) ? Pose[FCompactPoseBoneIndex(i)] * CS[P] : Pose[FCompactPoseBoneIndex(i)];
+			}
+		}
+		FTransform Get(FCompactPoseBoneIndex I) const { return CS.IsValidIndex(I.GetInt()) ? CS[I.GetInt()] : FTransform::Identity; }
+		void Set(FCompactPoseBoneIndex I, const FTransform& T)
+		{
+			const int32 i = I.GetInt();
+			if (!CS.IsValidIndex(i))
+			{
+				return;
+			}
+			const int32 P = Parent[i];
+			FTransform Local = (P >= 0 && P < i) ? T.GetRelativeTransform(CS[P]) : T;
+			Local.NormalizeRotation();
+			Pose[I] = Local;
+			Recompute(i);
+		}
+	};
 
 	void Sample(const UAnimSequence* Anim, float Time, FPoseContext& Out)
 	{
@@ -210,7 +263,7 @@ bool FBLEnemyAnimProxy::Evaluate(FPoseContext& Output)
 		FPoseContext ReloadPose(Output);
 		Sample(State.Reload, State.ReloadTime, ReloadPose);
 		const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
-		const FCompactPoseBoneIndex Spine = FindEnemyBone(Bones, TEXT("spine_01"));
+		const FCompactPoseBoneIndex Spine = FindEnemyBone(Output.Pose, TEXT("spine_01"));
 		for (const FCompactPoseBoneIndex I : Output.Pose.ForEachBoneIndex())
 		{
 			bool bUpper = false;
@@ -233,24 +286,18 @@ bool FBLEnemyAnimProxy::Evaluate(FPoseContext& Output)
 
 void FBLEnemyAnimProxy::ApplyProcedural(FPoseContext& Output) const
 {
-	if (!State.bReady)
+	if (!State.bReady || !Output.Pose.IsValid() || Output.Pose.GetNumBones() == 0)
 	{
 		return;
 	}
 	const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
-	const FCompactPoseBoneIndex Pelvis = FindEnemyBone(Bones, TEXT("pelvis"));
+	const FCompactPoseBoneIndex Pelvis = FindEnemyBone(Output.Pose, TEXT("pelvis"));
 	if (Pelvis == INDEX_NONE)
 	{
 		return;
 	}
-	FCSPose<FCompactPose> CS;
-	CS.InitPose(Output.Pose);
-	auto SetCS = [&CS](FCompactPoseBoneIndex I, const FTransform& T)
-	{
-		TArray<FBoneTransform> One;
-		One.Add(FBoneTransform(I, T));
-		CS.SafeSetCSBoneTransforms(One);
-	};
+	FSimpleCSPose CS(Output.Pose);
+	auto SetCS = [&CS](FCompactPoseBoneIndex I, const FTransform& T) { CS.Set(I, T); };
 	// En la malla del Mannequin: +Y = delante del personaje, +X = su izquierda, +Z arriba
 	const FVector Forward(0.f, 1.f, 0.f);
 
@@ -262,20 +309,20 @@ void FBLEnemyAnimProxy::ApplyProcedural(FPoseContext& Output) const
 		FTransform FeetBefore[2];
 		for (int32 k = 0; k < 2; ++k)
 		{
-			const FCompactPoseBoneIndex Foot = FindEnemyBone(Bones, Legs[k].Foot);
-			FeetBefore[k] = Foot != INDEX_NONE ? CS.GetComponentSpaceTransform(Foot) : FTransform::Identity;
+			const FCompactPoseBoneIndex Foot = FindEnemyBone(Output.Pose, Legs[k].Foot);
+			FeetBefore[k] = Foot != INDEX_NONE ? CS.Get(Foot) : FTransform::Identity;
 		}
-		FTransform P = CS.GetComponentSpaceTransform(Pelvis);
+		FTransform P = CS.Get(Pelvis);
 		P.AddToTranslation(FVector(0.f, -6.f, -CrouchDrop) * State.CrouchAlpha);
 		SetCS(Pelvis, P);
 		for (int32 k = 0; k < 2; ++k)
 		{
-			const FCompactPoseBoneIndex T = FindEnemyBone(Bones, Legs[k].Thigh), C = FindEnemyBone(Bones, Legs[k].Calf), F = FindEnemyBone(Bones, Legs[k].Foot);
+			const FCompactPoseBoneIndex T = FindEnemyBone(Output.Pose, Legs[k].Thigh), C = FindEnemyBone(Output.Pose, Legs[k].Calf), F = FindEnemyBone(Output.Pose, Legs[k].Foot);
 			if (T == INDEX_NONE || C == INDEX_NONE || F == INDEX_NONE)
 			{
 				continue;
 			}
-			FTransform TT = CS.GetComponentSpaceTransform(T), CC = CS.GetComponentSpaceTransform(C), FF = CS.GetComponentSpaceTransform(F);
+			FTransform TT = CS.Get(T), CC = CS.Get(C), FF = CS.Get(F);
 			const FVector Knee = CC.GetLocation() + Forward * 60.f;   // las rodillas se doblan hacia delante
 			AnimationCore::SolveTwoBoneIK(TT, CC, FF, Knee, FeetBefore[k].GetLocation(), false, 1.0, 1.0);
 			FF.SetRotation(FeetBefore[k].GetRotation());
@@ -283,7 +330,7 @@ void FBLEnemyAnimProxy::ApplyProcedural(FPoseContext& Output) const
 			Leg.Add(FBoneTransform(T, TT));
 			Leg.Add(FBoneTransform(C, CC));
 			Leg.Add(FBoneTransform(F, FF));
-			CS.SafeSetCSBoneTransforms(Leg);
+			for (const FBoneTransform& B : Leg) { CS.Set(B.BoneIndex, B.Transform); }
 		}
 	}
 
@@ -291,24 +338,24 @@ void FBLEnemyAnimProxy::ApplyProcedural(FPoseContext& Output) const
 	const float TorsoPitch = State.AimPitch - 10.f * State.CrouchAlpha + State.Kick * 6.f;
 	for (const TCHAR* Name : { TEXT("spine_01"), TEXT("spine_02"), TEXT("spine_03") })
 	{
-		const FCompactPoseBoneIndex S = FindEnemyBone(Bones, Name);
+		const FCompactPoseBoneIndex S = FindEnemyBone(Output.Pose, Name);
 		if (S == INDEX_NONE)
 		{
 			continue;
 		}
-		FTransform T = CS.GetComponentSpaceTransform(S);
+		FTransform T = CS.Get(S);
 		T.SetRotation(FQuat(FVector(1.f, 0.f, 0.f), FMath::DegreesToRadians(TorsoPitch / 3.f)) * T.GetRotation());
 		SetCS(S, T);
 	}
 
 	// ---- Mano izquierda al guardamanos del arma (el arma va en el socket HandGrip_R de la mano derecha) ----
-	const FCompactPoseBoneIndex HandR = FindEnemyBone(Bones, TEXT("hand_r"));
-	const FCompactPoseBoneIndex UpperL = FindEnemyBone(Bones, TEXT("upperarm_l")), LowerL = FindEnemyBone(Bones, TEXT("lowerarm_l")), HandL = FindEnemyBone(Bones, TEXT("hand_l"));
+	const FCompactPoseBoneIndex HandR = FindEnemyBone(Output.Pose, TEXT("hand_r"));
+	const FCompactPoseBoneIndex UpperL = FindEnemyBone(Output.Pose, TEXT("upperarm_l")), LowerL = FindEnemyBone(Output.Pose, TEXT("lowerarm_l")), HandL = FindEnemyBone(Output.Pose, TEXT("hand_l"));
 	if (State.bHasWeapon && State.LeftHandAlpha > 0.01f && HandR != INDEX_NONE && UpperL != INDEX_NONE && LowerL != INDEX_NONE && HandL != INDEX_NONE)
 	{
-		const FTransform WeaponCS = State.HandGripRLocal * CS.GetComponentSpaceTransform(HandR);
+		const FTransform WeaponCS = State.HandGripRLocal * CS.Get(HandR);
 		const FTransform Desired = State.HandGripLLocal.Inverse() * (FTransform(State.GripInWeapon) * WeaponCS);
-		FTransform U = CS.GetComponentSpaceTransform(UpperL), L = CS.GetComponentSpaceTransform(LowerL), H = CS.GetComponentSpaceTransform(HandL);
+		FTransform U = CS.Get(UpperL), L = CS.Get(LowerL), H = CS.Get(HandL);
 		const FTransform U0 = U, L0 = L, H0 = H;
 		AnimationCore::SolveTwoBoneIK(U, L, H, L0.GetLocation(), Desired.GetLocation(), false, 1.0, 1.0);
 		H.SetRotation(Desired.GetRotation());
@@ -320,8 +367,7 @@ void FBLEnemyAnimProxy::ApplyProcedural(FPoseContext& Output) const
 		Arm.Add(FBoneTransform(UpperL, UB));
 		Arm.Add(FBoneTransform(LowerL, LB));
 		Arm.Add(FBoneTransform(HandL, HB));
-		CS.SafeSetCSBoneTransforms(Arm);
+		for (const FBoneTransform& B : Arm) { CS.Set(B.BoneIndex, B.Transform); }
 	}
 
-	FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(CS), Output.Pose);
 }

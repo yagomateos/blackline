@@ -18,6 +18,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Sound/AmbientSound.h"
 #include "Sound/SoundBase.h"
+#include "Sound/SoundMix.h"
 
 namespace
 {
@@ -81,8 +82,13 @@ void UBLAutoTestComponent::BuildAudioTest()
 				Count(M->Debriefing);
 				for (const FBLObjective& O : M->Objectives) { Count(O.RadioOnStart); Count(O.RadioOnComplete); }
 			}
-			D = FString::Printf(TEXT("barks %d sonidos (%d grupos sin variaciones), radio %d/%d con voz"), BarkSounds, MissingBarks, Voiced, Lines);
-			return MissingBarks == 0 && Lines > 0 && Voiced == Lines;
+			// Mezclas que se cargan por nombre (deben estar cocinadas en la build)
+			const bool bMixes = LoadObject<USoundMix>(nullptr, TEXT("/Game/Audio/Settings/SMix_User.SMix_User")) != nullptr
+				&& LoadObject<USoundMix>(nullptr, TEXT("/Game/Audio/Settings/SMix_RadioDuck.SMix_RadioDuck")) != nullptr;
+			const bool bMenuSounds = LoadObject<USoundBase>(nullptr, TEXT("/Game/Audio/UI/SW_UI_MenuSelect.SW_UI_MenuSelect")) != nullptr;
+			D = FString::Printf(TEXT("barks %d sonidos (%d grupos sin variaciones), radio %d/%d con voz, mezclas=%d, sonidos de menú=%d"),
+				BarkSounds, MissingBarks, Voiced, Lines, bMixes, bMenuSounds);
+			return MissingBarks == 0 && Lines > 0 && Voiced == Lines && bMixes && bMenuSounds;
 		} });
 
 	// Briefing: la voz suena tras el clic, el subtítulo dura lo que la voz y la mezcla baja ambiente/música

@@ -20,7 +20,7 @@
 | 6 — Misión + HUD + checkpoint | ✅ Hecho (2026-10-08) · Mission 9/9 · pendiente prueba del usuario |
 | 7 — Audio base | ✅ Hecho (2026-10-08) · Audio 12/12 (85 fps) + regresión Mission/AI/Weapons/Combat/Movement OK · pendiente prueba del usuario |
 | 8 — Pase de arte | ✅ Hecho (2026-10-08) · Views 9/9 · **1080p: 62–77 fps** (preajuste Alto) · regresión AI/Mission/Level/Audio OK · pendiente prueba del usuario |
-| 9 — Test + optimización (Fase 3) | 🔶 En curso: build empaquetada correcta; arreglados 4 fallos (compilación de juego, usos de materiales, CommonUI, crash de animación de la IA en la build) · falta repetir las pruebas en la build |
+| 9 — Test + optimización (Fase 3) | ✅ Hecho (2026-10-08) · **todas las pruebas pasan en la build empaquetada** (Menu, Mission, Audio, AI, Views, Level, Movement, Weapons, Combat; 90–137 fps a 720p) · 6 fallos encontrados y arreglados (ver Bloque 9) |
 | 10 — Menú, opciones, pausa y lore (adelantado de la Fase 4) | ✅ Hecho (2026-10-08) · Menu 10/10 (incl. despliegue y pausa) · regresión OK · pendiente prueba del usuario |
 
 ---
@@ -35,17 +35,20 @@
 - **Tono:** realista, sobrio, operación militar moderna. Sin sci-fi.
 
 ### Misión 1 — "AMANECER ROTO" (~15–20 min, amanecer)
-1. Inserción (furgón civil, briefing por radio).
-2. Infiltración (patrullas, sigilo opcional).
-3. Contacto (control de carretera, alarma).
-4. Combate en calle (cobertura, flanqueos).
-5. Asalto al bloque de viviendas (CQB piso a piso).
-6. Objetivo: rescatar a **Tomas Varek** (informante) y recuperar su disco duro.
-7. Contraataque (defender posición, oleadas, humo).
-8. Evento: un **BTR** dispara contra el edificio → derrumbe parcial → huida por tejados.
-9. Extracción en el muelle con cobertura de helicóptero.
+| # | Fase (diseño aprobado) | Estado (2026-10-08) |
+|---|---|---|
+| 1 | Inserción (furgón civil, briefing por radio) | ✅ Jugable (calle trasera, furgón, briefing con voz) |
+| 2 | Infiltración (patrullas, sigilo opcional) | ✅ Jugable (callejones + patio de contenedores, 2 patrullas y centinela, consciencia gradual) |
+| 3 | Contacto (control de carretera, alarma) | ✅ Jugable (control con 4 milicianos; los disparos alertan a la escuadra). Sin alarma sonora propia |
+| 4 | Combate en calle (cobertura, flanqueos) | ✅ Jugable (calle principal, 5 milicianos, flanqueo por los callejones) |
+| 5 | Asalto al bloque de viviendas (CQB piso a piso) | ❌ **No hecho**: no hay interiores ni escaleras; el "local de Varek" es una sala en planta baja |
+| 6 | Objetivo: rescatar a **Tomas Varek** y recuperar su disco duro | 🔶 **Parcial y distinto del diseño**: solo se recupera el disco ("Ni rastro de Varek"); no hay rescate ni personaje de Varek. Ver decisión pendiente |
+| 7 | Contraataque (defender posición, oleadas, humo) | ❌ No hecho (no hay oleadas, ni humo de cobertura, ni granadas) |
+| 8 | Evento: un **BTR** dispara contra el edificio → derrumbe parcial → huida por tejados | ❌ No hecho (no hay BTR, derrumbe pre-simulado ni tejados transitables) |
+| 9 | Extracción en el muelle con cobertura de helicóptero | ❌ No hecho (la radio final manda al muelle, pero la misión termina al recoger el disco; no hay muelle ni helicóptero) |
 
-**Vertical slice = fases 1–4 + objetivo simple** (llegar a punto + recuperar objeto).
+**Vertical slice = fases 1–4 + objetivo simple** (llegar a punto + recuperar objeto): esa parte está terminada. Las fases 5–9 son la **misión 1 completa** (ver Tareas pendientes, Bloque 11).
+**Decisión pendiente (comunicada al usuario el 2026-10-08):** en el Bloque 6 la radio final dice "Ni rastro de Varek" y el lore (`Docs/Lore.md`) mueve su rescate a la misión 3 ("Ría"). Eso **contradice la fase 6 del diseño aprobado** (rescatarlo en la misión 1). Hasta que el usuario decida, el diseño aprobado manda: el Bloque 11 incluye el rescate de Varek.
 
 ### Arsenal
 | Arma | Rol | Prioridad |
@@ -140,7 +143,7 @@ Docs/                   Resultados y documentación técnica
 MEMORIA.md
 ```
 
-### C++ implementado (Bloques 1 y 2)
+### C++ implementado
 | Clase | Archivo | Función |
 |---|---|---|
 | `ABLCharacter` | `Player/BLCharacter` | Movimiento: andar 420, sprint 660, agachado 210 cm/s, ADS ×0.6, salto ~78 cm, mantle 45–165 cm, lean Q/E con colisión |
@@ -223,7 +226,7 @@ Doble clic en `Tools/jugar.bat` (juego en ventana, sin editor, **menú principal
 - **Weapons** (mismo mapa, estación "Tiro": muro a 10 m + cajas con física): 16 pasos — equipar, mano izquierda en el agarre (< 3 cm), ráfaga 1 s (cadencia, impactos, munición, retroceso), recuperación de la mira, recarga, sprint cortado al disparar, vaciar cargador + recarga automática + cerrojo abierto (hueso desplazado), recarga en vacío + cerrojo cerrado, dispersión en ADS, ráfaga en ADS, captura de impactos. Capturas de la recarga a 0,4 / 1,0 / 1,4 s.
 - Las estaciones del mapa se localizan por TargetPoints con tag `BLTest_Start_<Nombre>`.
 
-### Estructura C++ prevista
+### Estructura C++ prevista (plan inicial de la Fase 1; la real es la tabla "C++ implementado")
 ```
 Source/Blackline/
   Player/   BLCharacter, BLPlayerController, BLCameraComponent
@@ -253,7 +256,8 @@ Coordenadas en cm, +X = este (hacia donde se avanza), +Y = sur. Generado por `To
 | 2 Infiltración | Callejones A (x 28–33 m) y B (48–54 m, valla saltable de 110 cm) → patio del puerto (75 × 49 m) | Filas de contenedores (algunos apilados o abiertos) con varias rutas y puntos ciegos; nave al fondo; palés. Checkpoint "Infiltracion" en el callejón A |
 | 3 Contacto | Puerta del patio → carretera N-S (14 m) | Control: jerseys en zigzag, sacos en esquina a ambos lados, caseta, barrera, coche calcinado y T-walls; farolas de sodio. Checkpoint "Contacto" en la puerta |
 | 4 Calle | Calle principal E-O (x 104–195 m, 14 m) | Coches calcinados, jerseys, T-walls, contenedor y escombros alternando lados; posición de sacos enemiga al fondo; callejones C/D (norte) y E/F (sur) unidos por patios traseros = rutas de flanqueo. Checkpoint "Calle" en el cruce |
-| Objetivo | Local al final de la calle (x 195–210 m) | Planta baja abierta con mostrador y mesa; `TargetPoint` "Objetivo_Disco". Checkpoint "Objetivo" |
+| Objetivo | Local al final de la calle (x 195–210 m) | Planta baja abierta con mostrador y mesa; `TargetPoint` "Objetivo_Disco". Checkpoint "Objetivo". Encima, 3 plantas de viviendas solo de fachada (`ABLBuilding` sin planta baja) |
+| 5–9 | *Sin construir* | Bloque de viviendas con interiores y escaleras, posición a defender, BTR, derrumbe, tejados y muelle de extracción |
 
 ## 4. Pipeline de assets (Blender → Unreal)
 - Unidades: metros en Blender, escala 1.0 → Unreal 1 m = 100 cm.
@@ -271,6 +275,10 @@ Coordenadas en cm, +X = este (hacia donde se avanza), +Y = sur. Generado por `To
 | SM_Casing_556, SM_AR7_MuzzleFlash, SM_ImpactChip | `gen_weapon_fx.py` | 124 / 6 / 20 | Casquillo, fogonazo, esquirla (sin Nanite) |
 | SM_Cover_Sandbag_Straight / _Corner, SM_Cover_Jersey, SM_Cover_TWall | `gen_level_props.py` (+ `bl_kit.py`) | 8,3k / 15k / 0,8k / 0,4k | Coberturas con medidas finales (sacos 115 cm, jersey 107, T-wall 370). Nanite, colisión UCX |
 | SM_Container_20ft (+ _Open), SM_Veh_Van_Civil (+ _Open), SM_Veh_Sedan_Wreck | `gen_level_props.py` | 6,4k / 6–7k / 3k | Contenedor corrugado con puertas y barras; furgón (inserción, puertas traseras abiertas); coche calcinado sin cristales. Materiales triplanares (`setup_level_assets.py`) |
+| SM_Obj_Laptop_Rugged, SM_Obj_HardDrive | `gen_level_props.py` | ~3k / ~1k | Objetivo de la misión (portátil y disco con LED emisivo) |
+| SM_Fac_* (15 piezas: ventanas, balcón, persiana, locales, portal, cornisa, imposta, bajante, aire acondicionado, rótulo) | `gen_facade_kit.py` | 0,2–1,8k | Kit de fachadas modulares de `ABLBuilding` (Bloque 8). Nanite, UCX en los muros |
+| SM_Prop_* (contenedor de basura, bidón, neumáticos, palé/pila, caja, poste, cable, 3 escombros, bolsas, bolardo) | `gen_street_props.py` | 0,1–7k | Atrezo de calle (Bloque 8). Nanite, UCX |
+| SM_Militia_Vest / Helmet / Armband | `gen_militia_gear.py` | 3,9k / 0,7k / 0,1k | Equipo del miliciano en huesos del Mannequin (Bloque 8) |
 
 **Audio del Bloque 7** (`Tools/audio/`): `voice_lines.tsv` = tabla única de frases (id, tipo radio/bark, quién, voz, tono, velocidad, texto); `gen_voices.py` las sintetiza con las voces de Windows (`tts_lines.ps1`, WinRT, voz es-ES "Pablo") y las procesa (radio: banda 400–3000 Hz, saturación, compresión, soplido y "kssh" al soltar; barks: voz forzada, 3 voces de milicianos con tono/velocidad distintos). `gen_world_audio.py <fuentes> ArtSource/Audio/SFX`: balas (onda N + reflejo; silbido Doppler), ambientes de zona en bucle (agua, fuego, farola, viento en callejón, sala), combate lejano (ráfagas reales CC0 filtradas con eco, explosiones, sirena), chirridos metálicos y música (pulso táctico en re menor a 100 ppm, 19,2 s, + golpes de contacto y de cierre). `setup_audio_world.py` (commandlet) importa esas carpetas, crea `SA_Voice/Bullet/Distant/AmbSmall/AmbLarge`, `SCon_Voice`, clases `SC_SFX/Voice/Music/Ambience`, `SMix_RadioDuck`, `RE_Alley`, `RE_Interior`. `build_m01_greybox.py` lee el texto de la radio de la tabla por id, asigna la voz y coloca emisores (agua al norte del patio, zumbido en las 6 farolas, viento en los 6 callejones, sala del local) y zonas acústicas (callejones, calle trasera, local). Los sonidos que se cargan por nombre están en `DirectoriesToAlwaysCook` (`DefaultGame.ini`).
 **Arte del Bloque 8**: `gen_facade_kit.py` (Blender → `export/Facade`) + `setup_facade_assets.py` (mallas Nanite en `/Game/Environment/Facade`, `MI_Fac_Wall_<Color>` ×6, carpintería/piedra/metal triplanares, `M_Fac_Glass` con interior/cortina/luz por instancia, `M_Fac_Sign` descolorido). `gen_street_props.py` (→ `export/Props`, lo importa `setup_level_assets.py`): contenedor de basura, bidón, neumáticos, palés, caja, poste + cable con catenaria, 3 montones de escombro, bolsas, bolardo. `add_env_grime.py`: variación a gran escala, chorretones y suciedad a ras de suelo en `M_Env_Triplanar` (parámetro `GrimeStrength`). `setup_fx_env.py`: `M_FX_Flame`. `gen_militia_gear.py` + `setup_gear_assets.py`: equipo del miliciano con `M_Gear_Triplanar` (triplanar en espacio LOCAL: no "nada" al moverse). `inspect_refpose.py` vuelca la pose de referencia del Mannequin. En el nivel (`build_m01_greybox.py`): `finish_buildings()` (caras compartidas y calles), `dressing()`, `effects()`; iluminación con exposición local y más luz de cielo.
@@ -290,14 +298,14 @@ Mannequin y Game Animation Sample de Epic, Mixamo, texturas CC0 (Poly Haven, amb
 - **Música sintetizada** (pulso + cuerdas de diente de sierra + percusión): funcional pero sencilla; sustituir por una pista compuesta/licenciada cuando se pueda. No hay música fuera del combate (decisión: solo cuando sea apropiada).
 - Los chirridos de contenedor están generados pero sin colocar (el fuego ya suena en los fuegos del Bloque 8).
 - **MetaSounds no se usa**: las capas del disparo (cercana/lejana con mezcla por distancia, cola) se resuelven en C++ con SoundWaves (los MetaSounds no se pueden generar y probar por script con fiabilidad). Pendiente de valorar en la Fase 4.
-- **Misión**: Sin menú principal ni pausa (Fase 4); al completar, F reinicia el nivel. Los enemigos muertos siguen muertos tras reaparecer en un checkpoint (no se restaura el mundo).
+- **Misión**: solo fases 1–4 + disco (ver la tabla de la misión 1). Al completar, F reinicia el nivel (o Esc → salir al menú). Los enemigos muertos siguen muertos tras reaparecer en un checkpoint (no se restaura el mundo). Sin guardado de progreso (el menú no tiene "Continuar").
 - **IA**: sin animaciones de agacharse ni de muerte reales (agacharse procedural, muerte = ragdoll); sin gemido al morir (solo golpe del cuerpo contra el suelo); pasos por distancia recorrida, no sincronizados con los pies de la animación; sin granadas (Operador Corvane, Fase 4); la IA no salta obstáculos (NavLinks pendientes). Primer impacto/ragdoll de la partida: pico de ~400 ms en la build de editor.
 - Dificultad provisional: el jugador recibe el 55 % del daño (`DamageTakenMultiplier`); menú de dificultad en la Fase 4.
 - **Arte (Bloque 8) pendiente**: la nave del puerto, los muros del patio y los límites del nivel siguen siendo cajas con textura; los edificios no tienen interiores (ventanas opacas con "interior" falso); sin cristales que se rompan, sin decals de pintadas/carteles/charcos; el cuerpo del miliciano y los brazos del jugador siguen siendo el Mannequin (con equipo encima). El fuego no daña al jugador.
 - **Rendimiento a 1080p** (build de editor): 62–77 fps sin enemigos en el preajuste Alto; con combate y 12 enemigos hay que medirlo en el Bloque 9 (y en build empaquetada, que suele ir algo mejor).
 - La valla del callejón B (110 cm) no está en el NavMesh: la IA necesitará NavLinks para saltar obstáculos.
 - **Dianas = Mannequin blanco de Epic** (provisional hasta el miliciano del Bloque 5). Sin animaciones de reacción, solo física. Sangre sin marca sobre el cuerpo (los decals no se proyectan en personajes).
-- Primer ragdoll/salpicadura de la partida: pico de ~400 ms (compilación de shaders / inicialización de físicas en la build de editor); vigilar en la build empaquetada (Bloque 9).
+- Primer ragdoll/salpicadura de la partida: pico de ~400 ms en la build de editor; en la build empaquetada el peor frame baja a ~150–200 ms (sobre todo al empezar): falta precachear PSO.
 - Sonidos de combate **sintetizados** (`Tools/audio/gen_combat_sfx.py`): impacto en carne, hitmarker, daño recibido, latido. Sustituir por grabaciones si se consiguen (no se encontraron CC0 buenas en el Bloque 7).
 - **AR-7**: detalles finos pendientes (marcajes, grabados, moleteado). La palanca de carga no se anima (la recarga en vacío usa la retenida).
 - **Impactos, casquillos y pasos sintetizados** (no hay grabaciones CC0 buenas): sustituir por grabaciones reales en el Bloque 7 si se consiguen (p. ej. Sonniss GDC).
@@ -398,14 +406,28 @@ Mannequin y Game Animation Sample de Epic, Mixamo, texturas CC0 (Poly Haven, amb
 - [ ] **Prueba del usuario** (`Tools/jugar.bat`): aspecto de calles, fachadas, humo/fuego, enemigos.
 - [ ] Pendiente de arte (ver problemas conocidos): nave del puerto, decals, cristales rompibles, cuerpos/brazos propios.
 
-### Bloque 9 — Test + optimización (siguiente)
-- [ ] Fase 3 del prompt: compilación, C++, colisiones, IA, navegación, animaciones, armas, cámara, HUD, audio, rendimiento (con combate, a 1080p y en build empaquetada).
+### Bloque 9 — Test + optimización (Fase 3) ✅
+- [x] Compilación (editor y juego, sin avisos), cocinado sin avisos, build empaquetada Win64 Development (`..\BlacklineBuild\Windows\Blackline.exe`, ~1,1 GB).
+- [x] Todas las pruebas automáticas en la build: Menu (incl. despliegue y pausa), Mission 9/9, Audio 12/12, AI 12/12, Views 9/9, Level 8/8, Movement 17/17, Weapons 16/16, Combat 12/12. Rendimiento a 720p: 90–137 fps; a 1080p (editor): 62–77 fps sin enemigos, ~71 fps en combate.
+- [x] Fallos encontrados y arreglados: (1) la build de juego no compilaba (`GetActorLabel` es solo del editor); (2) materiales sin el uso Nanite/instancias (en la build se habrían visto con el material por defecto) → `fix_material_usage.py`; (3) aviso de CommonUI; (4) **crash al cargar la misión en la build** (la animación procedural de la IA: `FCSPose::SafeSetCSBoneTransforms` fallaba con la pose cocinada) → espacio de componente propio (`FSimpleCSPose`); (5) assets cargados por nombre que no se cocinaban (mezclas de audio, sonidos del menú) → `DirectoriesToAlwaysCook` + comprobación en la prueba Audio; (6) escala de resolución 0 guardada por el editor (habría renderizado a resolución mínima al cambiar opciones).
+- Cómo pasar las pruebas en la build: `MSYS_NO_PATHCONV=1 ./Blackline.exe <mapa> -windowed -ResX=1280 -ResY=720 -NoSound -unattended -BLTest=<Prueba>` desde `BlacklineBuild/Windows`; resultados en `Blackline/Saved/BLTest`. (Sin `MSYS_NO_PATHCONV` Git Bash convierte `/Game/...` en una ruta de Windows y el juego se cierra.)
+- [ ] Pendiente: medir en la build a 1080p con combate; pico de ~150–200 ms en el primer frame de cada prueba (carga de shaders/PSO).
+
+### Bloque 11 — Misión 1 completa: fases 5–9 (propuesto)
+Requisitos del diseño aprobado que faltan (tabla de la misión 1). Orden propuesto, cada parte verificada antes de la siguiente:
+- [ ] **Granada M-6** y **humo** (las necesitan el asalto y el contraataque; la granada es un requisito del prompt original).
+- [ ] **Fase 5 — Asalto al bloque de viviendas**: edificio con interiores (portal, escalera, rellanos, 3 plantas de pisos con puertas, ventanas transitables desde dentro), NavMesh por plantas, milicianos dentro (CQB), puertas que se abren con F.
+- [ ] **Fase 6 — Rescate de Varek**: Varek atado en un piso del último nivel; liberarlo (F mantenido), que te siga (IA aliada simple), el disco en su piso. *(Según la decisión pendiente sobre Varek.)*
+- [ ] **Fase 7 — Contraataque**: defender el piso durante oleadas de la Columna (escuadras que llegan por la calle y los patios), granadas de humo enemigas, radio de TORRE con cuenta atrás.
+- [ ] **Fase 8 — BTR y derrumbe**: BTR guionizado (malla Blender + torreta que dispara), impacto contra el edificio, derrumbe parcial pre-simulado (piezas animadas desde Blender), polvo/escombros, huida por los tejados (tejados transitables y tablones entre edificios).
+- [ ] **Fase 9 — Extracción**: bajada al muelle, defensa breve hasta que llega el helicóptero (malla + rotor + sonido), cobertura del helicóptero (ráfagas guionizadas), subida y fin de misión con resumen.
+- [ ] Ampliar el nivel `L_M01_AmanecerRoto` hacia el muelle (hoy termina en el local) y la prueba `Mission` hasta la extracción.
 
 ### Requisitos del prompt original aún sin reflejar en el plan
-- [x] **Lista de assets de Blender** (punto 11 del prompt) → `Docs/Assets_Blender.md` (2026-10-08). **Pendiente de aprobación**, con 3 decisiones abiertas: cuerpo del miliciano, AR-7 por script con revisión visual y grey-box con coberturas finales.
+- [x] **Lista de assets de Blender** (punto 11 del prompt) → `Docs/Assets_Blender.md` (2026-10-08). Aprobada con sus 3 decisiones (ver Registro de decisiones).
 - [ ] **"2 o 3 armas muy bien hechas"**: el slice lleva solo el AR-7; las siguientes (P-17, SG-12) son las primeras de la Fase 4 y deben llegar al mismo nivel de acabado antes de añadir más.
 - [ ] **Fase 3 (Bloque 9)** — comprobar: compilación, Blueprints, C++, colisiones, IA, navegación, animaciones, armas, cámara, HUD, audio, rendimiento.
-- [ ] **Fase 4 — pendientes**: menús completos, loadout, opciones (gráficos/audio/controles), guardado, dificultades, más misiones/zonas/objetivos, enemigo especial (candidato: Operador Corvane), vehículos solo si aportan (BTR).
+- [ ] **Fase 4 — pendientes**: ~~menús, opciones~~ (hechos en el Bloque 10; el armamento es solo de consulta: no hay elección de loadout), guardado de progreso, dificultades, más misiones/zonas/objetivos, enemigo especial (candidato: Operador Corvane), vehículos solo si aportan (BTR, que la misión 1 completa necesita).
 
 ## 7. Registro de decisiones
 | Fecha | Decisión |
