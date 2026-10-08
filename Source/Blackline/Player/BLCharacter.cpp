@@ -16,6 +16,7 @@
 #include "Engine/SkeletalMeshSocket.h"
 #include "Components/StaticMeshComponent.h"
 #include "FX/BLSurfaceEffects.h"
+#include "UI/BLUserSettings.h"
 #include "Kismet/GameplayStatics.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Sound/SoundBase.h"
@@ -215,10 +216,15 @@ void ABLCharacter::BeginPlay()
 	FirstPersonMesh->PrimaryComponentTick.AddPrerequisite(this, PrimaryActorTick);
 
 	InitCombat();
+	// Opciones del jugador (sensibilidad, FOV, movimiento de cámara)
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		UBLUserSettings::Get()->ApplyToPlayer(PC);
+	}
 
 	// Piloto automático de pruebas: -BLTest=Movement
 	FString TestName;
-	if (FParse::Value(FCommandLine::Get(), TEXT("BLTest="), TestName) && IsPlayerControlled())
+	if (FParse::Value(FCommandLine::Get(), TEXT("BLTest="), TestName) && IsPlayerControlled() && !TestName.Equals(TEXT("Menu"), ESearchCase::IgnoreCase))   // la del menú la lleva ABLMenuPlayerController
 	{
 		UBLAutoTestComponent* AutoTest = NewObject<UBLAutoTestComponent>(this, TEXT("BLAutoTest"));
 		AutoTest->RegisterComponent();
@@ -331,6 +337,7 @@ void ABLCharacter::DoLook(float Yaw, float Pitch)
 	}
 	const float Sens = LookSensitivity * FMath::Lerp(1.f, 0.7f, AimAlpha); // algo más preciso en ADS
 	AddControllerYawInput(Yaw * Sens);
+	Pitch *= bInvertLookY ? -1.f : 1.f;
 	AddControllerPitchInput(Pitch * Sens);
 	LookDeltaThisFrame += FVector2D(Yaw, Pitch) * Sens;
 }

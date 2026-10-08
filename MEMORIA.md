@@ -1,7 +1,7 @@
 # BLACKLINE — Memoria del proyecto
 
 > Documento vivo. Se actualiza tras cada cambio importante.
-> Última actualización: 2026-10-08 · **Bloque 8 (pase de arte)** hecho: fachadas modulares, atrezo, humo/fuego, iluminación, equipo del miliciano y preajuste gráfico medido a 1080p · **Bloque 7 (audio base)** hecho: voces de radio y de la IA (provisionales), música de combate, ambiente por zona, acústica, balas que pasan cerca, pasos de la IA · Bloque 6: el vertical slice se juega de principio a fin.
+> Última actualización: 2026-10-08 · **Menú principal, pausa, opciones y LORE** hechos (adelantados de la Fase 4 a petición del usuario) · repo público en GitHub · **Bloque 8 (pase de arte)** hecho: fachadas modulares, atrezo, humo/fuego, iluminación, equipo del miliciano y preajuste gráfico medido a 1080p · **Bloque 7 (audio base)** hecho: voces de radio y de la IA (provisionales), música de combate, ambiente por zona, acústica, balas que pasan cerca, pasos de la IA · Bloque 6: el vertical slice se juega de principio a fin.
 > Requisitos originales del usuario (copia literal): `Docs/PROMPT_ORIGINAL.md`.
 
 ---
@@ -20,7 +20,8 @@
 | 6 — Misión + HUD + checkpoint | ✅ Hecho (2026-10-08) · Mission 9/9 · pendiente prueba del usuario |
 | 7 — Audio base | ✅ Hecho (2026-10-08) · Audio 12/12 (85 fps) + regresión Mission/AI/Weapons/Combat/Movement OK · pendiente prueba del usuario |
 | 8 — Pase de arte | ✅ Hecho (2026-10-08) · Views 9/9 · **1080p: 62–77 fps** (preajuste Alto) · regresión AI/Mission/Level/Audio OK · pendiente prueba del usuario |
-| 9 — Test + optimización (Fase 3) | ⏳ |
+| 9 — Test + optimización (Fase 3) | 🔶 En curso: build empaquetada correcta; arreglados 4 fallos (compilación de juego, usos de materiales, CommonUI, crash de animación de la IA en la build) · falta repetir las pruebas en la build |
+| 10 — Menú, opciones, pausa y lore (adelantado de la Fase 4) | ✅ Hecho (2026-10-08) · Menu 10/10 (incl. despliegue y pausa) · regresión OK · pendiente prueba del usuario |
 
 ---
 
@@ -87,7 +88,8 @@ Procedural y configurable: head bob ligado a pasos (suave), sway por inercia, in
 Amanecer frío (gris azulado/cian) + acentos de sodio naranja. PBR con texturas CC0 / Fab. Niagara para muzzle flash, casquillos, impactos por material, polvo, humo, cristales. Destrucción limitada (decals, cristales, derrumbe pre-simulado en Blender). Sin Chaos destruction en tiempo real.
 
 ### Menú / HUD
-- **Menú:** "terminal táctico de mando": mapa topográfico oscuro de Kessra con la línea negra, tipografía monoespaciada, acento ámbar. Misiones como puntos en el mapa. Entradas requeridas: Jugar, Selección de misión, Armamento/loadout, Opciones (Gráficos, Audio, Controles), Salir. Identidad propia, sin copiar la UI de CoD.
+- **Menú:** "terminal táctico de mando": mapa topográfico oscuro de Kessra con la línea negra, tipografía monoespaciada, acento ámbar. Misiones como puntos en el mapa. Entradas requeridas: Jugar, Selección de misión, Armamento/loadout, Opciones (Gráficos, Audio, Controles), Salir. Identidad propia, sin copiar la UI de CoD. **Hecho (Bloque 10)** + Inteligencia (expedientes del lore) y música propia (`SW_Mus_Menu_Loop`).
+- **Lore:** `Docs/Lore.md` (mundo, facciones, personajes, cronología, campaña de 5 misiones). TORRE = Capitán Elias Marot.
 - **HUD:** mínimo y contextual. Munición abajo-derecha (aparece al disparar/recargar), granadas, marcador de objetivo con distancia, indicador direccional de daño, hitmarker, prompt de interacción. Sin minimapa.
 
 ### Audio
@@ -177,6 +179,9 @@ MEMORIA.md
 | `ABLReverbZone` | `Audio/BLReverbZone` | Caja acústica: con la cámara dentro activa su reverb (prioridad sobre la del exterior) y escala el ambiente de ciudad (`ABLGameMode::SetAmbienceScale`). En vez de AudioVolume (brushes no generables por script) |
 | `ABLBuilding` | `Environment/BLBuilding` | **Edificio de fachadas modulares (Bloque 8)**: núcleo macizo (colisión, navegación) 25 cm por dentro y fachadas con instancias del kit (`gen_facade_kit.py`): plantas de 320 cm, módulos de ~400 cm estirados a cada cara; columnas de ventanas coherentes de abajo arriba, persianas a distintas alturas, balcones, aires acondicionados, bajantes, imposta, cornisa con peto; planta baja con locales (persiana/escaparate), portales y paños ciegos (más locales en `StreetMask`). Caras ocultas fuera (`FaceMask`). `bNoGroundFloor` para plantas sobre un bajo hecho aparte. Todo por `Seed` |
 | `ABLSmokeEmitter` | `Environment/BLSmokeEmitter` | Humo y fuego ambiental con sprites ISM (M_FX_Dust, mismos datos por instancia que los impactos): columnas de humo lejanas (36 sprites enormes que suben y deriva con el viento) y fuegos (`bFire`: llamas aditivas M_FX_Flame, luz que parpadea sin sombras, sonido de fuego). Coste fijo |
+| `UBLUserSettings` | `UI/BLUserSettings` | Opciones del jugador en `GameUserSettings.ini`: sensibilidad, invertir Y, FOV, movimiento de cámara (accesibilidad), volúmenes (general + `SMix_User` sobre SC_Music/SFX/Voice/Ambience; los sonidos sin clase son SC_SFX por `DefaultSoundClassName`). Gráficos vía `UGameUserSettings`: preajustes Baja/Media/**Alta (recomendada)**/Épica, pantalla, resolución, escala TSR (corrige el 0 que guarda el editor), VSync, límite de FPS |
+| `SBLMainMenu` + `ABLMenuPlayerController`/`ABLMenuGameMode` | `UI/` | **Menú principal en Slate (C++)** sobre `L_MainMenu` (vacío): mapa topográfico de Kessra generado por código (`SBLTopoMap`: curvas de nivel por marching squares, costa, ría, línea negra, misiones), páginas Jugar / Selección de misión (+ punto de inicio) / Armamento / Inteligencia / Opciones / Salir. Teclado, ratón y mando. Música con fundido; sonidos de navegación. Despliega con `?BLStart=<Fase>` |
+| `SBLOptionsPanel`, `SBLPauseMenu` | `UI/` | Opciones (Gráficos/Audio/Controles, se aplican al momento, se guardan al volver) compartidas con la **pausa** (Esc / Start: continuar, volver al punto de control, reiniciar misión, opciones, salir al menú; el juego queda en pausa) |
 | `ABLCharacter` (combate) | `Player/BLCharacterCombat.cpp` | Daño recibido: sacudida de cámara/arma según el lado, destello, indicador, sonido. Pantalla dañada (viñeta + tinte rojo según la salud, sumados a la gradación del nivel) y latido con salud baja. Muerte: suelta todo, la cámara cae al suelo rodando, el arma cae, fundido a negro y reaparición a los 4 s en el checkpoint. Hitmarker + sonido |
 
 **Jerarquía del personaje (desde el Bloque 2):** Capsule → CameraRoot (altura de ojos suavizada + pitch + lean) → Camera (bob/impulsos) → { WeaponRoot → WeaponMesh ; FirstPersonMesh }. **El arma manda**: el rig coloca WeaponRoot delante de la cámara y las dos manos del Mannequin la siguen por IK; el cuerpo FP queda fijo a la cámara (así nunca entra en cuadro al mover el arma). La malla FP hace tick después del personaje (sin retraso de un frame). El cuerpo completo (`Mesh`) es invisible para el jugador pero proyecta sombra.
@@ -203,12 +208,13 @@ MEMORIA.md
 WASD mover · Ratón mirar · Shift sprint (mantener) · C / Ctrl agacharse (alternar) · Espacio saltar / encaramarse · Q/E inclinarse (mantener) · Clic dcho. apuntar · Clic izq. disparar · R recargar · F interactuar* · G granada* · 1/2 cambiar arma* (*mapeado, sin implementar aún). Mando: mapeado básico.
 
 ### Jugar
-Doble clic en `Tools/jugar.bat` (juego en ventana, sin editor, **misión 1** `L_M01_AmanecerRoto`) o `Tools/jugar_pruebas.bat` (mapa de pruebas `L_Dev_Movement`). O abrir `Blackline.uproject` y pulsar Play en el editor. Empezar en una fase concreta: `Tools\jugar_fase.bat Fase3` (Fase1 inserción, Fase2 patio, Fase3 control, Fase4 calle, Objetivo local; arg. `-BLStart=<Fase>`). Build empaquetada (Bloque 9): `..\BlacklineBuild\Windows\Blackline.exe`.
+Doble clic en `Tools/jugar.bat` (juego en ventana, sin editor, **menú principal** `L_MainMenu`, que es también el mapa por defecto) o `Tools/jugar_pruebas.bat` (mapa de pruebas `L_Dev_Movement`). O abrir `Blackline.uproject` y pulsar Play en el editor. Empezar en una fase concreta: `Tools\jugar_fase.bat Fase3` (Fase1 inserción, Fase2 patio, Fase3 control, Fase4 calle, Objetivo local; arg. `-BLStart=<Fase>`). Build empaquetada (Bloque 9): `..\BlacklineBuild\Windows\Blackline.exe`.
 
 ### Pruebas automáticas
 `bash Tools/run_test.sh [Prueba] [Mapa] [--nobuild]` compila, lanza el juego con `-BLTest=<Prueba>` y muestra resultados. Resultados y capturas (desde el render) en `Saved/BLTest/`.
 - **Movement** (mapa `L_Dev_Movement`): 17 pasos — asentar, andar, sprint, frenar, agacharse, andar agachado, levantarse, ADS, soltar ADS, lean izq/der, salto, mantle 100/150, muro 250 (sin mantle), escaleras, lean contra pared.
 - **Mission** (mapa de la misión): 9 pasos — briefing por radio, los 5 objetivos en orden (callejón, puerta del patio, control eliminado, local, disco recogido manteniendo F), marcador del objetivo, pantalla de misión completada con resumen. `bash Tools/run_test.sh Mission /Game/Maps/M01/L_M01_AmanecerRoto`
+- **Menu** (`bash Tools/run_test.sh Menu /Game/Maps/Menu/L_MainMenu`): recorre las páginas con capturas, cambia opciones y comprueba que se guardan en el .ini (y las restaura), despliega la misión 1 desde el patio (jugador en su sitio y objetivo 2) y abre la pausa (juego en pausa).
 - **Views** (mapa de la misión, ~40 s): 9 vistas fijas (inserción, callejón, patio, control, calle, fachadas, local, retrato de un miliciano, coche ardiendo) con fps medios y capturas; enemigos retirados salvo el del retrato. A 1080p: `BL_RESX=1920 BL_RESY=1080 bash Tools/run_test.sh Views /Game/Maps/M01/L_M01_AmanecerRoto --nobuild`. Perfil de GPU de una vista: `BL_ARGS="-BLProfileView=Calle"` y luego `python -I Tools/benchmark/gpu_profile_summary.py Saved/BLTest/Views_game.log 0.3 6`.
 - **Audio** (mapa de la misión, con `-NoSound`: comprueba la lógica y que los sonidos existen): 12 pasos — recursos (66 barks, 11/11 frases de radio con voz), voz del briefing + atenuación de la mezcla, emisores de ambiente (16) y zonas acústicas (8), reverb activa en el local / callejón / calle, pasos de la patrulla, contacto (bark + golpe + música), balas que pasan cerca, "¡Hombre abajo!", la música se va al acabar el combate, combate lejano. `bash Tools/run_test.sh Audio /Game/Maps/M01/L_M01_AmanecerRoto --nobuild`
 - **AI** (mapa de la misión): 12 pasos — 12 enemigos con controlador en patrulla, las 4 patrullas recorren su ruta, disparos oídos a 30–40 m (investigan), no detecta por la espalda agachado, detecta de frente y alerta a su escuadra, coberturas (en cobertura y protegidos del jugador), disparan con como mucho 3 turnos, recargan, flanquean, persiguen al perderlo, captura de cerca, bajas (ragdoll, salen de la escuadra). `bash Tools/run_test.sh AI /Game/Maps/M01/L_M01_AmanecerRoto`
@@ -405,6 +411,8 @@ Mannequin y Game Animation Sample de Epic, Mixamo, texturas CC0 (Poly Haven, amb
 | Fecha | Decisión |
 |---|---|
 | 2026-10-07 | Diseño v0.1 aprobado sin cambios. |
+| 2026-10-08 | El usuario pide el **menú principal con música** antes de seguir con el Bloque 9 → Bloque 10 (menú, opciones, pausa, lore). Menús en **Slate en C++** (como el HUD en Canvas: los widgets UMG no se generan por script). Música del menú **original sintetizada** (estilo militar épico; no se puede usar la de CoD). |
+| 2026-10-08 | Repositorio **público** en GitHub (yagomateos/blackline) **sin los packs de Epic ni las voces TTS** (decisión del usuario tras avisar de la licencia): se publica una instantánea filtrada con `Tools/publish_public.sh`; el repo de trabajo no tiene remoto. |
 | 2026-10-08 | Bloque 8: edificios con **fachadas modulares por instancias** (un actor C++ las genera por semilla) en vez de mallas únicas por edificio; humo/fuego con el sistema de sprites propio (Niagara sigue sin poder generarse por script); **preajuste gráfico por defecto "Alto"** en AA/GI/reflejos (Épico no cabe a 60 fps a 1080p en la GTX 1660 Super). Nubes volumétricas probadas y retiradas (≈1 ms sin mejora visible con este cielo). |
 | 2026-10-08 | Bloque 7: **voces provisionales con la síntesis de voz de Windows** (no hay voces CC0 en español para estas frases); **sin MetaSounds** (capas en C++, como StateTree→C++); música solo en combate; el combate lejano lo genera el código (no un bucle) para que llegue desde direcciones distintas. |
 | 2026-10-07 | Benchmark: Lumen + VSM + Nanite + TSR 75% por defecto (72 fps en escena de prueba). Re-medir en Bloque 8 con contenido real. |

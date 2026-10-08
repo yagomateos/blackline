@@ -2,6 +2,7 @@
 
 #include "Blackline.h"
 #include "Audio/BLAudioSubsystem.h"
+#include "Core/BLGameMode.h"
 #include "AI/BLEnemyCharacter.h"
 #include "Combat/BLHealthComponent.h"
 #include "Mission/BLInteractable.h"
@@ -293,9 +294,8 @@ void ABLMissionDirector::Tick(float DeltaTime)
 		{
 			bStarted = true;
 			// -BLStart=<Fase> (jugar_fase.bat): se salta el briefing y empieza en el objetivo de esa fase
-			FString StartPhase;
 			static const TMap<FString, int32> PhaseObjective = { { TEXT("Fase2"), 1 }, { TEXT("Fase3"), 2 }, { TEXT("Fase4"), 3 }, { TEXT("Objetivo"), 4 } };
-			const int32* Skip = FParse::Value(FCommandLine::Get(), TEXT("BLStart="), StartPhase) ? PhaseObjective.Find(StartPhase) : nullptr;
+			const int32* Skip = PhaseObjective.Find(ABLGameMode::GetStartPhase(this));
 			if (Skip && Objectives.IsValidIndex(*Skip))
 			{
 				StartObjective(*Skip);

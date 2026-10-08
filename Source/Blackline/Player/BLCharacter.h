@@ -95,6 +95,8 @@ public:
 	USkeletalMeshComponent* GetFirstPersonMesh() const { return FirstPersonMesh; }
 	USkeletalMeshComponent* GetWeaponMesh() const { return WeaponMesh; }
 	UBLFirstPersonRigComponent* GetFirstPersonRig() const { return FirstPersonRig; }
+	/** Opciones > Controles. */
+	void SetLookOptions(float Sensitivity, bool bInvertY) { LookSensitivity = Sensitivity; bInvertLookY = bInvertY; }
 	UBLWeaponComponent* GetWeapon() const { return Weapon; }
 	UBLFirstPersonAnimInstance* GetFirstPersonAnim() const;
 
@@ -171,6 +173,8 @@ protected:
 	/** Multiplicador de sensibilidad (se expondrá en Opciones). */
 	UPROPERTY(EditAnywhere, Category = "Input", meta = (ClampMin = "0.05"))
 	float LookSensitivity = 1.0f;
+	/** Invertir el eje vertical (Opciones > Controles). */
+	UPROPERTY(EditAnywhere, Category = "Input") bool bInvertLookY = false;
 
 	// ---- Movimiento ----
 	UPROPERTY(EditAnywhere, Category = "Movement") float WalkSpeed = 420.f;

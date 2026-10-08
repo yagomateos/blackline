@@ -44,5 +44,5 @@ Texturas (Poly Haven) y grabaciones de armas (Free Firearm Sound Library) son **
   clic izq. disparar, R recargar, F interactuar.
 
 ## Estado
-Vertical slice (Bloques 0–8) terminado; en curso el Bloque 9 (test y optimización) y el menú principal.
+Vertical slice (Bloques 0–8) terminado, con menú principal, opciones, pausa y lore (`Docs/Lore.md`). En curso: Bloque 9 (test y optimización).
 Más en `MEMORIA.md`.

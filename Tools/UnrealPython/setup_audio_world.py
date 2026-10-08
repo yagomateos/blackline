@@ -117,10 +117,12 @@ def main():
         ("Ambience/Distant/SW_Dist_Explosion", "distant", None, "Ambience", 0.9, False),
         ("Ambience/Distant/", "distant", None, "Ambience", 0.6, False),
         ("Music/SW_Mus_Combat_Loop", None, None, "Music", 1.0, True),
+        ("Music/SW_Mus_Menu_Loop", None, None, "Music", 0.9, True),
         ("Music/", None, None, "Music", 1.0, False),
+        ("UI/", None, None, "SFX", 0.55, False),             # hitmarker, objetivo y menú (Bloque 10), 2D
     ]
     count = 0
-    folders = ["Voice", "Weapons/Bullet", "Ambience/Zones", "Ambience/Distant", "Music"]
+    folders = ["Voice", "Weapons/Bullet", "Ambience/Zones", "Ambience/Distant", "Music", "UI"]
     for folder in folders:
         for wav in sorted(glob.glob(os.path.join(SFX_DIR, folder, "**", "*.wav"), recursive=True)):
             rel = os.path.relpath(wav, SFX_DIR).replace("\\", "/")
@@ -159,6 +161,10 @@ def main():
     mix.set_editor_property("fade_in_time", 0.25)
     mix.set_editor_property("fade_out_time", 0.8)
     lib.save_loaded_asset(mix)
+
+    # Volúmenes de Opciones > Audio: los ajusta UBLUserSettings en tiempo de ejecución (SetSoundMixClassOverride)
+    user = get_or_create("SMix_User", SETTINGS, unreal.SoundMix, unreal.SoundMixFactory())
+    lib.save_loaded_asset(user)
 
     # Zonas acústicas
     reverb("RE_Alley", {"density": 1.0, "diffusion": 0.55, "gain": 0.4, "gain_hf": 0.6, "decay_time": 1.1, "decay_hf_ratio": 0.7,
