@@ -90,7 +90,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "AI|Perception") float AwarenessRate = 2.6f;
 	/** Error de puntería (cm) al empezar a ver al objetivo y mínimo tras apuntar un rato. */
 	UPROPERTY(EditAnywhere, Category = "AI|Combat") float AimErrorMax = 170.f;
-	UPROPERTY(EditAnywhere, Category = "AI|Combat") float AimErrorMin = 28.f;
+	UPROPERTY(EditAnywhere, Category = "AI|Combat") float AimErrorMin = 34.f;
 	/** Segundos sin ver al objetivo antes de ir a buscarlo. */
 	UPROPERTY(EditAnywhere, Category = "AI|Combat") float ChaseDelay = 9.f;
 	UPROPERTY(EditAnywhere, Category = "AI|Combat") float SearchTime = 14.f;

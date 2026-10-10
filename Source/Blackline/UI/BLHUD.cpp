@@ -1,6 +1,7 @@
 #include "UI/BLHUD.h"
 
 #include "UI/BLMenuData.h"
+#include "Vehicles/BLBoat.h"
 
 #include "Combat/BLHealthComponent.h"
 #include "Mission/BLCheckpointSubsystem.h"
@@ -141,24 +142,117 @@ void ABLHUD::DrawHitMarker(const ABLCharacter* Char)
 
 void ABLHUD::DrawDamageIndicators(const ABLCharacter* Char)
 {
+	// Arcos rojos alrededor de la mira, en la dirección del tirador (girando con la vista): grandes y gruesos,
+	// lejos de la mira para no tapar al enemigo; se desvanecen en los últimos 0,8 s
 	const float Now = GetWorld()->GetTimeSeconds();
 	const FVector2D C(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.5f);
-	const float Radius = Canvas->ClipY * 0.17f;
+	const float Radius = Canvas->ClipY * 0.26f;
 	const FRotator View = Char->GetControlRotation();
 	for (const ABLCharacter::FDamageIndicator& I : Char->GetDamageIndicators())
 	{
 		const FVector Local = FRotator(0.f, View.Yaw, 0.f).UnrotateVector((I.Source - Char->GetActorLocation()).GetSafeNormal2D());
 		const float Ang = FMath::Atan2(Local.Y, Local.X);
-		const float Age = (Now - I.Time) / 1.8f;
-		const FLinearColor Col = WithAlpha(FLinearColor(0.85f, 0.08f, 0.05f, 0.85f), I.Strength * (1.f - FMath::SmoothStep(0.4f, 1.f, Age)));
-		const float Half = FMath::DegreesToRadians(18.f);
-		for (int32 k = 0; k < 10; ++k)
+		const float Age = Now - I.Time;
+		const float Fade = 1.f - FMath::SmoothStep(1.8f, 2.6f, Age);
+		const float Pop = 1.f + 0.12f * FMath::Max(0.f, 1.f - Age / 0.15f);   // aparece con un pequeño golpe
+		const FLinearColor Col = WithAlpha(FLinearColor(0.9f, 0.08f, 0.04f, 0.9f), FMath::Lerp(0.55f, 1.f, I.Strength) * Fade);
+		const float Half = FMath::DegreesToRadians(22.f);
+		const int32 N = 14;
+		for (int32 k = 0; k < N; ++k)
 		{
-			const float A0 = Ang - Half + 2.f * Half * k / 10.f, A1 = Ang - Half + 2.f * Half * (k + 1) / 10.f;
-			const float Mid = 1.f - FMath::Abs((k + 0.5f) / 10.f * 2.f - 1.f);
-			Line(C + FVector2D(FMath::Sin(A0), -FMath::Cos(A0)) * Radius, C + FVector2D(FMath::Sin(A1), -FMath::Cos(A1)) * Radius, Col, (3.f + 5.f * Mid) * S());
+			const float A0 = Ang - Half + 2.f * Half * k / N, A1 = Ang - Half + 2.f * Half * (k + 1) / N;
+			const float Mid = 1.f - FMath::Abs((k + 0.5f) / N * 2.f - 1.f);
+			Line(C + FVector2D(FMath::Sin(A0), -FMath::Cos(A0)) * Radius * Pop, C + FVector2D(FMath::Sin(A1), -FMath::Cos(A1)) * Radius * Pop, Col, (4.f + 10.f * Mid) * S());
+		}
+		// Punta hacia fuera: indica claramente "de ahí viene"
+		const FVector2D Dir(FMath::Sin(Ang), -FMath::Cos(Ang));
+		const FVector2D Side(-Dir.Y, Dir.X);
+		const FVector2D Tip = C + Dir * (Radius * Pop + 26.f * S());
+		const FVector2D Base = C + Dir * (Radius * Pop + 6.f * S());
+		Line(Tip, Base + Side * 14.f * S(), Col, 4.f * S());
+		Line(Tip, Base - Side * 14.f * S(), Col, 4.f * S());
+	}
+}
+
+void ABLHUD::DrawDamageVignette(const ABLCharacter* Char)
+{
+	// Bordes de la pantalla en rojo: el golpe (destello, más fuerte en el lado del tirador) y la salud baja (constante,
+	// late con el corazón). El centro queda limpio: no tapa al enemigo ni la mira
+	const UBLHealthComponent* H = Char->GetHealth();
+	const float Frac = H ? H->GetHealthFraction() : 1.f;
+	const float Low = (1.f - FMath::SmoothStep(0.15f, 0.55f, Frac)) * (0.75f + 0.25f * FMath::Sin(GetWorld()->GetTimeSeconds() * 7.5f));
+	const float Flash = Char->GetDamageFlash();
+	if (Flash < 0.01f && Low < 0.01f)
+	{
+		return;
+	}
+	// Lado del último golpe (0 arriba, 1 dcha, 2 abajo, 3 izda)
+	float SideBoost[4] = { 0.f, 0.f, 0.f, 0.f };
+	if (Char->GetDamageIndicators().Num() > 0)
+	{
+		const ABLCharacter::FDamageIndicator& Last = Char->GetDamageIndicators().Last();
+		const FVector Local = FRotator(0.f, Char->GetControlRotation().Yaw, 0.f).UnrotateVector((Last.Source - Char->GetActorLocation()).GetSafeNormal2D());
+		SideBoost[0] = FMath::Max(0.f, (float)Local.X);
+		SideBoost[2] = FMath::Max(0.f, (float)-Local.X);
+		SideBoost[1] = FMath::Max(0.f, (float)Local.Y);
+		SideBoost[3] = FMath::Max(0.f, (float)-Local.Y);
+	}
+	const float W = Canvas->ClipX, Hh = Canvas->ClipY;
+	const float Depth = Hh * 0.16f;
+	const int32 Bands = 18;
+	for (int32 Side = 0; Side < 4; ++Side)
+	{
+		const float Strength = FMath::Clamp(0.55f * Low + Flash * (0.45f + 0.75f * SideBoost[Side]), 0.f, 1.f);
+		if (Strength < 0.01f)
+		{
+			continue;
+		}
+		for (int32 b = 0; b < Bands; ++b)
+		{
+			const float T = float(b) / Bands;
+			const float A = Strength * 0.55f * (1.f - T) * (1.f - T);
+			const FLinearColor Col(0.45f, 0.01f, 0.01f, FMath::Min(A, 0.6f));
+			const float D0 = Depth * T, D1 = Depth * (T + 1.f / Bands);
+			switch (Side)
+			{
+			case 0: Rect(FVector2D(0.f, D0), FVector2D(W, D1 - D0), Col); break;
+			case 2: Rect(FVector2D(0.f, Hh - D1), FVector2D(W, D1 - D0), Col); break;
+			case 1: Rect(FVector2D(W - D1, 0.f), FVector2D(D1 - D0, Hh), Col); break;
+			default: Rect(FVector2D(D0, 0.f), FVector2D(D1 - D0, Hh), Col); break;
+			}
 		}
 	}
+}
+
+void ABLHUD::DrawHealth(const ABLCharacter* Char)
+{
+	// Salud en segmentos (abajo a la izquierda): aparece al recibir daño o con la salud por debajo del máximo y se
+	// desvanece con la salud llena; el segmento que regenera parpadea
+	const UBLHealthComponent* H = Char->GetHealth();
+	if (!H)
+	{
+		return;
+	}
+	const float Frac = H->GetHealthFraction();
+	const float Since = H->GetTimeSinceDamage();
+	const float A = Frac < 0.999f ? 1.f : 1.f - FMath::SmoothStep(2.f, 3.f, Since);
+	if (A < 0.01f)
+	{
+		return;
+	}
+	const int32 Segs = 4;
+	const float SegW = 64.f * S(), SegH = 9.f * S(), Gap = 6.f * S();
+	const FVector2D Pos(64.f * S(), Canvas->ClipY - 66.f * S());
+	const float PerSeg = 1.f / Segs;
+	for (int32 i = 0; i < Segs; ++i)
+	{
+		const FVector2D P(Pos.X + i * (SegW + Gap), Pos.Y);
+		Rect(P, FVector2D(SegW, SegH), FLinearColor(0.f, 0.f, 0.f, 0.45f * A));
+		const float Fill = FMath::Clamp((Frac - i * PerSeg) / PerSeg, 0.f, 1.f);
+		const FLinearColor Col = Frac < 0.3f ? Alert : WithAlpha(Ink, 0.9f);
+		Rect(P, FVector2D(SegW * Fill, SegH), WithAlpha(Col, A * (Fill < 1.f && Fill > 0.f && Since > 3.5f ? 0.6f + 0.4f * FMath::Sin(GetWorld()->GetTimeSeconds() * 6.f) : 1.f)));
+	}
+	Text(TEXT("SALUD"), FVector2D(Pos.X, Pos.Y - 18.f * S()), 11.f * S(), WithAlpha(Frac < 0.3f ? Alert : Amber, 0.8f * A), true);
 }
 
 void ABLHUD::DrawAmmo(const ABLCharacter* Char)
@@ -424,6 +518,22 @@ void ABLHUD::DrawPhotoFlash()
 		13.f * S(), WithAlpha(Amber, A), true, 0.5f);
 }
 
+void ABLHUD::DrawBoat(const ABLCharacter* Char)
+{
+	const ABLBoat* Boat = Char->GetDrivenBoat();
+	if (!Boat)
+	{
+		return;
+	}
+	// Velocidad en nudos y controles, abajo en el centro
+	const float CX = Canvas->ClipX * 0.5f;
+	const float Y = Canvas->ClipY - 92.f * S();
+	const float Knots = FMath::Abs(Boat->GetCurrentSpeed()) * 0.036f / 1.852f;
+	Text(FString::Printf(TEXT("%02d"), FMath::RoundToInt(Knots)), FVector2D(CX, Y), 30.f * S(), WithAlpha(Ink, 0.9f), true, 0.5f);
+	Text(Boat->GetCurrentSpeed() < -10.f ? TEXT("NUDOS · ATRÁS") : TEXT("NUDOS"), FVector2D(CX, Y + 36.f * S()), 11.f * S(), WithAlpha(Amber, 0.8f), true, 0.5f);
+	Text(TEXT("[W/S] ACELERAR / FRENAR    [A/D] TIMÓN"), FVector2D(CX, Y + 58.f * S()), 11.f * S(), WithAlpha(Ink, 0.55f), true, 0.5f);
+}
+
 void ABLHUD::DrawMountedGun(const ABLCharacter* Char)
 {
 	const ABLMountedGun* Gun = Char->GetMountedGun();
@@ -570,7 +680,14 @@ void ABLHUD::DrawHUD()
 	const UBLWeaponComponent* W = Char->GetWeapon();
 	DrawObjective(Director);
 	DrawMarker(Char, Director);
+	DrawDamageVignette(Char);
 	DrawDamageIndicators(Char);
+	DrawHealth(Char);
+	if (Char->IsDrivingBoat())
+	{
+		DrawBoat(Char);
+		return;
+	}
 	if (Char->IsMounted())
 	{
 		DrawMountedGun(Char);

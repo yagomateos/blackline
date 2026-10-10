@@ -13,6 +13,9 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/DamageEvents.h"
 #include "Engine/StaticMesh.h"
+#include "Player/BLCharacter.h"
+#include "Components/PointLightComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
@@ -22,8 +25,9 @@ namespace
 	const FVector RotorOffset(0.f, 0.f, 395.f);
 	const FVector TailRotorOffset(-1090.f, 24.f, 380.f);
 	const FVector DoorGunOffset(245.f, 150.f, 168.f);
-	/** Donde se sube: junto a la puerta izquierda, en el peldaño. */
-	const FVector BoardOffset(30.f, -165.f, 110.f);
+	/** Donde se sube: en el hueco de la puerta izquierda, a media altura (antes, fuera junto al patín, con la cabina
+	 *  maciza en la colisión: no se podía entrar). */
+	const FVector BoardOffset(25.f, -95.f, 130.f);
 }
 
 ABLHelicopter::ABLHelicopter()
@@ -49,6 +53,32 @@ ABLHelicopter::ABLHelicopter()
 	TailRotor->SetRelativeLocation(TailRotorOffset);
 	TailRotor->SetStaticMesh(BL::LoadDefault<UStaticMesh>(TEXT("/Game/Vehicles/Heli/SM_Heli_TailRotor.SM_Heli_TailRotor")));
 	TailRotor->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	CabinSpot = CreateDefaultSubobject<USceneComponent>(TEXT("CabinSpot"));
+	CabinSpot->SetupAttachment(Body);
+	CabinSpot->SetRelativeLocation(FVector(40.f, -45.f, 68.f + 93.f));
+	CabinLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("CabinLight"));
+	CabinLight->SetupAttachment(Body);
+	CabinLight->SetRelativeLocation(FVector(25.f, 0.f, 245.f));
+	CabinLight->SetIntensityUnits(ELightUnits::Candelas);
+	CabinLight->SetIntensity(8.f);
+	CabinLight->SetAttenuationRadius(380.f);
+	CabinLight->SetLightColor(FLinearColor(1.f, 0.9f, 0.75f));
+	CabinLight->SetCastShadows(false);
+
+	RotorDisc = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RotorDisc"));
+	RotorDisc->SetupAttachment(Body);
+	RotorDisc->SetRelativeLocation(RotorOffset + FVector(0.f, 0.f, -2.f));
+	RotorDisc->SetStaticMesh(BL::LoadDefault<UStaticMesh>(TEXT("/Game/Vehicles/Heli/SM_Heli_RotorDisc.SM_Heli_RotorDisc")));
+	RotorDisc->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	RotorDisc->SetCastShadow(false);
+
+	TailRotorDisc = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TailRotorDisc"));
+	TailRotorDisc->SetupAttachment(Body);
+	TailRotorDisc->SetRelativeLocation(TailRotorOffset);
+	TailRotorDisc->SetStaticMesh(BL::LoadDefault<UStaticMesh>(TEXT("/Game/Vehicles/Heli/SM_Heli_TailRotorDisc.SM_Heli_TailRotorDisc")));
+	TailRotorDisc->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	TailRotorDisc->SetCastShadow(false);
 
 	Searchlight = CreateDefaultSubobject<USpotLightComponent>(TEXT("Searchlight"));
 	Searchlight->SetupAttachment(Body);
@@ -78,6 +108,9 @@ ABLHelicopter::ABLHelicopter()
 void ABLHelicopter::BeginPlay()
 {
 	Super::BeginPlay();
+	RotorDiscMID = RotorDisc->CreateDynamicMaterialInstance(0);
+	TailRotorDiscMID = TailRotorDisc->CreateDynamicMaterialInstance(0);
+	UpdateRotorVisuals(0.f);
 	if (BodyMaterial)
 	{
 		for (int32 i = 0; i < Body->GetNumMaterials(); ++i)
@@ -246,10 +279,61 @@ void ABLHelicopter::Tick(float DeltaTime)
 	}
 	Bob += DeltaTime;
 
-	// Rotores (el principal a ~3 vueltas/s visibles: más rápido parpadea con el muestreo de los fotogramas)
+	UpdateRotorVisuals(DeltaTime);
+}
+
+void ABLHelicopter::HandleBoarded(ABLInteractable* Interactable, ABLCharacter* User)
+{
+	// Sube: dentro de la cabina, de pie junto a la puerta, mirando afuera mientras despega el resumen
+	if (User)
+	{
+		User->EnterVehicleSeat(CabinSpot, GetActorRotation().Yaw - 90.f);
+		UE_LOG(LogBlackline, Log, TEXT("[Heli] El jugador sube a la cabina"));
+	}
+}
+
+void ABLHelicopter::ShowForTest(float Rate, bool bLanded)
+{
+	State = bLanded ? EState::Landed : EState::Hover;
+	StateTime = 0.f;
+	RotorRate = Rate;
+	HoverPoint = GetActorLocation();   // estacionario donde está
+	bLandRequested = false;
+	SetActorHiddenInGame(false);
+	SetActorEnableCollision(true);
+	SetActorTickEnabled(true);
+}
+
+bool ABLHelicopter::IsRotorDiscVisible() const
+{
+	return RotorDisc && RotorDisc->IsVisible();
+}
+
+void ABLHelicopter::UpdateRotorVisuals(float DeltaTime)
+{
+	// Palas nítidas solo a pocas vueltas (al arrancar o al pararse); a régimen de vuelo, el disco de desenfoque con
+	// las estelas de las palas: así lo ve una cámara. (Antes: palas planas a ~3 vueltas/s, una cruz girando despacio.)
 	RotorSpin = FMath::Fmod(RotorSpin + RotorRate * DeltaTime, 360.f);
 	Rotor->SetRelativeRotation(FRotator(0.f, RotorSpin, 0.f));
 	TailRotor->SetRelativeRotation(FRotator(FMath::Fmod(RotorSpin * 4.7f, 360.f), 0.f, 0.f));
+	const float Blur = FMath::SmoothStep(500.f, 1300.f, RotorRate);
+	const bool bBlades = Blur < 0.9f;
+	Rotor->SetVisibility(bBlades);
+	TailRotor->SetVisibility(Blur < 0.6f);
+	RotorDisc->SetVisibility(Blur > 0.01f);
+	TailRotorDisc->SetVisibility(Blur > 0.01f);
+	// Las estelas giran despacio (efecto estroboscópico de una cámara real), no a la velocidad de las palas
+	DiscSpin = FMath::Fmod(DiscSpin + 70.f * DeltaTime, 360.f);
+	RotorDisc->SetRelativeRotation(FRotator(0.f, DiscSpin, 0.f));
+	TailRotorDisc->SetRelativeRotation(FRotator(FMath::Fmod(DiscSpin * 3.f, 360.f), 0.f, 0.f));
+	if (RotorDiscMID)
+	{
+		RotorDiscMID->SetScalarParameterValue(TEXT("Opacity"), 0.42f * Blur);
+	}
+	if (TailRotorDiscMID)
+	{
+		TailRotorDiscMID->SetScalarParameterValue(TEXT("Opacity"), 0.45f * Blur);
+	}
 }
 
 float ABLHelicopter::TakeDamage(float Damage, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -359,6 +443,7 @@ void ABLHelicopter::EnableBoarding()
 		{
 			It->SetActorLocation(GetActorTransform().TransformPosition(BoardOffset));
 			It->bEnabled = true;
+			It->OnUsed.AddUniqueDynamic(this, &ABLHelicopter::HandleBoarded);
 		}
 	}
 	UE_LOG(LogBlackline, Log, TEXT("[Heli] En tierra: se puede subir"));

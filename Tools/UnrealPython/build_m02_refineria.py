@@ -319,9 +319,11 @@ def east_quay():
     boat = A.spawn_actor_from_class(unreal.BLBoat, unreal.Vector(26000, 6000, WATER_Z), unreal.Rotator(roll=0, pitch=0, yaw=200))
     boat.set_actor_label("Lancha_Extraccion")
     boat.set_editor_property("path", [unreal.Vector(26000, 6000, WATER_Z), unreal.Vector(24600, 1400, WATER_Z),
-                                      unreal.Vector(23600, 520, WATER_Z), unreal.Vector(22400, 520, WATER_Z)])
-    boat.set_editor_property("board_offset", unreal.Vector(-60, 140, 150))
-    boat.tags = [unreal.Name("BLBoat"), unreal.Name("BLBoat_Board")]
+                                      unreal.Vector(23600, 390, WATER_Z), unreal.Vector(22400, 390, WATER_Z)])
+    # Pegada al embarcadero: el punto de subida queda en su borde, al alcance (210 cm) desde la cámara
+    boat.set_editor_property("board_offset", unreal.Vector(-60, 175, 140))
+    boat.tags = [unreal.Name("BLBoat"), unreal.Name("BLBoat_Board"), unreal.Name("BLBoat_Drive")]
+    marker("BLObj_Salida", 29300, 8200, WATER_Z + 100)
     K.interactable("Subir_Lancha", "BLObjective_Boat", 22400, 380, 40, "Subir a la lancha", hold=1.0)
     K.start_point("Muelle", 20500, 0, 0)
 
@@ -381,6 +383,7 @@ def mission():
                       waves=[wave(["BLWave_MuelleN"], 3, 4.0, False, flashlights=True),
                              wave(["BLWave_MuelleS"], 3, 8.0, True, [radio("M02_Ametralladora")], gunners=1)]),
         objective_def("Sube a la lancha", USE, "BLObjective_Boat", activate=["BLBoat_Board"], on_start=[radio("M02_Lancha")]),
+        objective_def("Sal de la dársena con la lancha", REACH, "BLObj_Salida", radius=700.0, activate=["BLBoat_Drive"]),
     ]
     K.director("MANIFIESTO", objectives,
                briefing=[radio("M02_Brief_01"), radio("M02_Brief_02"), radio("M02_Brief_03")],

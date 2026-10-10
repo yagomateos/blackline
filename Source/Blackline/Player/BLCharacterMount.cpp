@@ -3,6 +3,7 @@
 #include "Player/BLCharacter.h"
 
 #include "Blackline.h"
+#include "Vehicles/BLBoat.h"
 #include "Weapons/BLMountedGun.h"
 #include "Weapons/BLWeaponComponent.h"
 
@@ -21,7 +22,9 @@ void ABLCharacter::MountGun(ABLMountedGun* Gun)
 	if (Weapon)
 	{
 		Weapon->SetTriggerHeld(false);
+		Weapon->CancelReload();
 	}
+	bFireNeedsRelease = bFireInputHeld;   // la ametralladora no dispara con una pulsación que venía del fusil
 	bSprintHeld = false;
 	if (bIsCrouched)
 	{
@@ -52,6 +55,16 @@ void ABLCharacter::DismountGun()
 {
 	ABLMountedGun* Gun = MountedGun.Get();
 	MountedGun = nullptr;
+	// Estado de disparo limpio: la ametralladora deja de disparar y el fusil no hereda el gatillo apretado
+	if (Gun)
+	{
+		Gun->SetTriggerHeld(false);
+	}
+	if (Weapon)
+	{
+		Weapon->SetTriggerHeld(false);
+	}
+	bFireNeedsRelease = bFireInputHeld;
 	if (WeaponMesh) { WeaponMesh->SetVisibility(true, true); }
 	if (FirstPersonMesh) { FirstPersonMesh->SetVisibility(true, true); }
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
@@ -75,5 +88,85 @@ void ABLCharacter::MountGunTrigger(bool bHeld)
 	if (ABLMountedGun* Gun = MountedGun.Get())
 	{
 		Gun->SetTriggerHeld(bHeld && !bDead);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Lancha (misión 2): de pie junto a la consola, sin arma en la mano; W/S y A/D la pilotan
+// ---------------------------------------------------------------------------
+
+void ABLCharacter::BoardBoat(ABLBoat* Boat)
+{
+	if (!Boat || bDead || IsInVehicleOrMount())
+	{
+		return;
+	}
+	DrivenBoat = Boat;
+	if (Weapon)
+	{
+		Weapon->SetTriggerHeld(false);
+		Weapon->CancelReload();
+	}
+	bSprintHeld = false;
+	bAimHeld = false;
+	if (bIsCrouched)
+	{
+		UnCrouch();
+	}
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->DisableMovement();
+	SetActorEnableCollision(false);
+	if (WeaponMesh) { WeaponMesh->SetVisibility(false, true); }
+	if (FirstPersonMesh) { FirstPersonMesh->SetVisibility(false, true); }
+	AttachToComponent(Boat->GetDriverSeat(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->SetControlRotation(FRotator(-8.f, Boat->GetActorRotation().Yaw, 0.f));
+	}
+	UE_LOG(LogBlackline, Log, TEXT("[Lancha] El jugador sube y toma el timón"));
+}
+
+void ABLCharacter::LeaveBoat()
+{
+	if (!DrivenBoat.IsValid())
+	{
+		return;
+	}
+	ABLBoat* Boat = DrivenBoat.Get();
+	DrivenBoat = nullptr;
+	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	SetActorRotation(FRotator(0.f, GetActorRotation().Yaw, 0.f));
+	SetActorEnableCollision(true);
+	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	if (WeaponMesh) { WeaponMesh->SetVisibility(true, true); }
+	if (FirstPersonMesh) { FirstPersonMesh->SetVisibility(true, true); }
+	Boat->OnDriverLeft();
+}
+
+void ABLCharacter::EnterVehicleSeat(USceneComponent* Seat, float LookYaw)
+{
+	if (!Seat || bDead || IsInVehicleOrMount())
+	{
+		return;
+	}
+	VehicleSeat = Seat;
+	if (Weapon)
+	{
+		Weapon->SetTriggerHeld(false);
+		Weapon->CancelReload();
+	}
+	bSprintHeld = false;
+	bAimHeld = false;
+	if (bIsCrouched)
+	{
+		UnCrouch();
+	}
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->DisableMovement();
+	SetActorEnableCollision(false);
+	AttachToComponent(Seat, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->SetControlRotation(FRotator(-5.f, LookYaw, 0.f));
 	}
 }

@@ -240,37 +240,92 @@ def fish_crates(out):
     save(k, out)
 
 
+def loft(k, name, plan, levels, mat=0):
+    """Casco con forma: el contorno de la cubierta (plan) a varias alturas con su escala de manga (z, sy, sx):
+    pantoque redondeado abajo y algo de abanico arriba (antes eran paredes verticales: parecía de cartón)."""
+    import bmesh
+    from bl_kit import W
+    bm = bmesh.new()
+    rings = [[bm.verts.new(W(x * sx, y * sy, z)) for x, y in plan] for z, sy, sx in levels]
+    n = len(plan)
+    for a, b in zip(rings, rings[1:]):
+        for i in range(n):
+            j = (i + 1) % n
+            bm.faces.new((a[i], a[j], b[j], b[i]))
+    bm.faces.new(rings[0])
+    bm.faces.new(list(reversed(rings[-1])))
+    return k._finish(bm, name, mat, 0.0, 1, True)
+
+
 def cargo_ship(out):
-    k = Kit("SM_Ship_Cargo", [SHIP_GREY, SHIP_RUST, SHIP_DECK, GLASS, HULL_WHITE])
-    L, B = 9000.0, 1500.0
-    plan = [(-4500, -700), (-4500, 700), (3200, 750), (4100, 500), (4500, 0), (4100, -500), (3200, -750)]
-    k.prism("HullBottom", plan, 'z', -650, -200, 1, bevel=0.002)      # obra viva (óxido bajo la línea de agua)
-    k.prism("Hull", plan, 'z', -200, 900, 0, bevel=0.002)
-    k.prism("Deck", [(x * 0.995, y * 0.98) for x, y in plan], 'z', 900, 915, 2, bevel=0.0)
-    k.prism("Bulwark", [(3200, 750), (4100, 500), (4500, 0), (4100, -500), (3200, -750), (3200, -700), (4050, -470), (4420, 0), (4050, 470), (3200, 700)], 'z', 915, 1060, 0, bevel=0.002)
-    # Escotillas de bodega
-    for i, x in enumerate((-1500, 0, 1500, 2800)):
-        k.box(f"Hatch{i}", x - 550, x + 550, -560, 560, 915, 1080, 1 if i % 2 else 0, bevel=0.003)
-    # Superestructura a popa: cuatro cubiertas, puente con ventanas, alerones y chimenea
+    k = Kit("SM_Ship_Cargo", [SHIP_GREY, SHIP_RUST, SHIP_DECK, GLASS, HULL_WHITE, HULL_RED, ("MI_Ship_Black", (0.02, 0.02, 0.02, 1), 0.6, 0.2)])
+    # Contorno de cubierta con más puntos en la proa (curva) y popa redondeada
+    plan = [(-4500, -620), (-4440, -700), (-4300, -745), (3000, -750), (3500, -700), (3900, -560), (4250, -330), (4500, 0),
+            (4250, 330), (3900, 560), (3500, 700), (3000, 750), (-4300, 745), (-4440, 700), (-4500, 620)]
+    # Obra viva (roja, antiincrustante) hasta un poco por encima del agua: banda de flotación visible
+    loft(k, "HullBottom", plan, [(-650, 0.72, 0.97), (-450, 0.9, 0.985), (-250, 0.98, 0.995), (-60, 1.0, 1.0)], mat=5)
+    # Obra muerta gris con un ligero abanico hacia la cubierta
+    loft(k, "Hull", plan, [(-60, 1.0, 1.0), (400, 1.0, 1.0), (900, 1.02, 1.003)], mat=0)
+    # Tracas de refuerzo (verdugos): bandas que sobresalen y hacen sombra a lo largo del casco
+    for i, z in enumerate((120, 380, 640)):
+        sy = 1.0 + 0.02 * (z - 400) / 500 if z > 400 else 1.0
+        loft(k, f"Strake{i}", plan, [(z, sy + 0.006, 1.002), (z + 9, sy + 0.006, 1.002)], mat=0)
+    loft(k, "Sheer", plan, [(884, 1.026, 1.004), (906, 1.026, 1.004)], mat=6)          # cinta negra bajo la cubierta
+    k.prism("Deck", [(x * 0.995, y * 1.0) for x, y in plan], 'z', 900, 915, 2, bevel=0.0)
+    k.prism("Bulwark", [(3000, 770), (3500, 718), (3900, 575), (4250, 340), (4510, 0), (4250, -340), (3900, -575), (3500, -718), (3000, -770),
+                        (3000, -735), (3480, -685), (3870, -548), (4215, -322), (4465, 0), (4215, 322), (3870, 548), (3480, 685), (3000, 735)],
+            'z', 915, 1060, 0, bevel=0.002)
+    # Barandilla: candeleros cada 150 cm y dos pasamanos a ambas bandas, de la superestructura al castillo
+    for side in (-1, 1):
+        y = side * 735
+        for x in range(-3150, 3000, 150):
+            k.box(f"Stanchion{side}_{x}", x - 3, x + 3, y - 3, y + 3, 915, 1020, 6, bevel=0.0)
+        for zr in (970, 1020):
+            k.box(f"Rail{side}_{zr}", -3150, 3000, y - 3, y + 3, zr - 3, zr + 3, 6, bevel=0.0)
+    # Escotillas de bodega con brazola y refuerzos transversales
+    for i, x in enumerate((-1500, 0, 1500, 2600)):
+        k.box(f"Coaming{i}", x - 580, x + 580, -590, 590, 915, 1010, 6, bevel=0.003)
+        k.box(f"Hatch{i}", x - 550, x + 550, -560, 560, 1010, 1080, 1 if i % 2 else 0, bevel=0.003)
+        for r in range(-450, 500, 150):
+            k.box(f"HatchRib{i}_{r}", x + r - 8, x + r + 8, -565, 565, 1080, 1092, 0, bevel=0.0)
+    # Superestructura a popa: cuatro cubiertas con ojos de buey, puente con ventanas, alerones y chimenea
     for j, (h0, h1, w) in enumerate(((915, 1250, 650), (1250, 1580, 620), (1580, 1910, 590), (1910, 2240, 640))):
         k.box(f"Deckhouse{j}", -4300, -3200, -w, w, h0, h1, 4 if j < 3 else 0, bevel=0.002)
+        k.box(f"DeckhouseLip{j}", -4320, -3180, -w - 20, w + 20, h1 - 12, h1, 0, bevel=0.0)
+        if j < 3:
+            for side in (-1, 1):
+                for x in range(-4150, -3250, 180):
+                    k.lathe(f"Port{j}_{side}_{x}", [(0, 22), (6, 20)], (x, side * (w + 4), (h0 + h1) / 2), (0, -side, 0), seg=12, mat=3)
+            for yy in range(-w + 120, w - 60, 200):
+                k.lathe(f"PortF{j}_{yy}", [(0, 22), (6, 20)], (-3196, yy, (h0 + h1) / 2), (-1, 0, 0), seg=12, mat=3)
     k.box("BridgeWindows", -3205, -3190, -600, 600, 2040, 2200, 3, bevel=0.0)
     for s in (-1, 1):
         k.box(f"Wing{s}", -3500, -3200, s * 640 - (0 if s > 0 else 220), s * 640 + (220 if s > 0 else 0), 2160, 2240, 0, bevel=0.002)
+        k.box(f"WingRail{s}", -3500, -3200, s * 640 + (210 if s > 0 else -220), s * 640 + (220 if s > 0 else -210), 2240, 2340, 6, bevel=0.0)
     k.box("Funnel", -4200, -3700, -180, 180, 2240, 2850, 0, bevel=0.01)
-    k.box("FunnelTop", -4210, -3690, -190, 190, 2850, 2890, 1, bevel=0.004)
+    k.box("FunnelBand", -4205, -3695, -185, 185, 2700, 2780, 5, bevel=0.0)
+    k.box("FunnelTop", -4210, -3690, -190, 190, 2850, 2890, 6, bevel=0.004)
     k.lathe("Mast", [(0, 12), (900, 8)], (-3500, 0, 2240), (0, 0, 1), seg=8, mat=0)
-    # Dos grúas de cubierta
-    for i, x in enumerate((-750, 2150)):
-        k.box(f"CranePost{i}", x - 90, x + 90, -90, 90, 1080, 1900, 0, bevel=0.004)
+    k.box("MastYard", -3510, -3490, -260, 260, 2900, 2915, 0, bevel=0.0)
+    # Dos grúas de cubierta con pescante y cable
+    for i, x in enumerate((-750, 2050)):
+        k.lathe(f"CranePost{i}", [(0, 95), (820, 80)], (x, 0, 1080), (0, 0, 1), seg=16, mat=0)
+        k.box(f"CraneHouse{i}", x - 120, x + 120, -110, 110, 1820, 1980, 4, bevel=0.003)
         jib = k.box(f"CraneJib{i}", x, x + 1800, -30, 30, 1850, 1920, 0, bevel=0.003)
         k.transform(jib, Matrix.Translation((x, 0, 1885)) @ Matrix.Rotation(math.radians(-18), 4, 'Y') @ Matrix.Translation((-x, 0, -1885)))
-    # Amarras de proa (bolardos) y escobén: ahí va la baliza
+    # Amarras de proa (bolardos), escobenes y anclas: ahí va la baliza
     for s in (-1, 1):
         k.lathe(f"Bitt{s}", [(0, 22), (60, 22), (66, 30)], (3600, s * 400, 915), (0, 0, 1), seg=12, mat=1)
         k.lathe(f"Hawse{s}", [(0, 40), (30, 34)], (3900, s * 600, 700), (0.3, s, 0), seg=14, mat=1)
-    k.collision_box(-4500, 3200, -750, 750, -650, 915)
-    k.collision_box(3200, 4500, -500, 500, -650, 915)
+        anchor = k.box(f"AnchorShank{s}", 3880, 3900, s * 618 - 10, s * 618 + 10, 420, 690, 6, bevel=0.0)
+        k.box(f"AnchorFluke{s}", 3840, 3940, s * 618 - 12, s * 618 + 12, 400, 430, 6, bevel=0.0)
+    # Marcas de calado (blancas) en proa y popa
+    for x, yy in ((4300, 1), (-4440, 1)):
+        for side in (-1, 1):
+            for z in range(-150, 350, 100):
+                k.box(f"Draft{x}_{side}_{z}", x - 20, x + 20, side * (720 if x > 0 else 745) - 2, side * (720 if x > 0 else 745) + 2, z, z + 14, 4, bevel=0.0)
+    k.collision_box(-4500, 3000, -750, 750, -650, 915)
+    k.collision_box(3000, 4500, -500, 500, -650, 915)
     k.collision_box(-4300, -3200, -650, 650, 915, 2240)
     save(k, out)
 
@@ -285,6 +340,8 @@ def main():
     for fn, out in ((corvane_helmet, gear), (corvane_vest, gear), (door, town), (door_frame, town), (breach_charge, town),
                     (bell_tower, town), (stone_bridge, town), (arcade, town), (fishing_boat, town), (fish_crates, town),
                     (cargo_ship, town)):
+        if os.environ.get("BL_ONLY") and fn.__name__ != os.environ["BL_ONLY"]:
+            continue
         bl_lib.reset_scene()
         fn(out)
 

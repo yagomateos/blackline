@@ -1,4 +1,6 @@
 #include "Core/BLGameMode.h"
+#include "Weapons/BLWeaponData.h"
+#include "Weapons/BLWeaponComponent.h"
 
 #include "Player/BLCharacter.h"
 #include "Player/BLPlayerController.h"
@@ -110,9 +112,16 @@ void ABLGameMode::VerifyMenuDeploy()
 		if (It->Tags.Contains(FName(*(TEXT("BLTest_Start_") + Phase)))) { Expected = It->GetActorLocation(); }
 	}
 	const float Dist = Pawn ? FVector::Dist2D(Pawn->GetActorLocation(), Expected) : 1e9f;
-	const bool bOk = Pawn && Dist < 300.f && M && M->GetCurrentIndex() == 1;
-	const FString Line = FString::Printf(TEXT("%s  %-14s fase %s, jugador a %.0f cm del inicio, objetivo %d"),
-		bOk ? TEXT("PASS") : TEXT("FAIL"), TEXT("Despliegue"), *Phase, Dist, M ? M->GetCurrentIndex() + 1 : 0);
+	// Equipamiento elegido en el menú (la escopeta): es el arma real en la mano; luego se deja el AR-7 por defecto
+	const ABLCharacter* BLChar = Cast<ABLCharacter>(Pawn);
+	const UBLWeaponComponent* W = BLChar ? BLChar->GetWeapon() : nullptr;
+	const FString InHand = W ? GetNameSafe(W->GetWeaponData()) : FString();
+	const int32 Slots = W ? W->GetWeaponCount() : 0;
+	UBLUserSettings::Get()->LoadoutPrimary = TEXT("AR7");
+	UBLUserSettings::Get()->Save();
+	const bool bOk = Pawn && Dist < 300.f && M && M->GetCurrentIndex() == 1 && InHand == TEXT("DA_SG12") && Slots == 2;
+	const FString Line = FString::Printf(TEXT("%s  %-14s fase %s, jugador a %.0f cm del inicio, objetivo %d, en la mano %s (%d armas)"),
+		bOk ? TEXT("PASS") : TEXT("FAIL"), TEXT("Despliegue"), *Phase, Dist, M ? M->GetCurrentIndex() + 1 : 0, *InHand, Slots);
 	UE_LOG(LogBlackline, Display, TEXT("[BLTest] %s"), *Line);
 	const FString Path = FPaths::ProjectSavedDir() / TEXT("BLTest/Menu_results.txt");
 	TArray<FString> Lines;

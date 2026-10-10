@@ -46,7 +46,7 @@ public:
 	int32 GetMaxTokensSeen() const { return MaxTokensSeen; }
 	int32 GetFlankAssignments() const { return FlankAssignments; }
 
-	UPROPERTY(EditAnywhere, Category = "Squad") int32 MaxAttackTokens = 3;
+	UPROPERTY(EditAnywhere, Category = "Squad") int32 MaxAttackTokens = 2;
 	UPROPERTY(EditAnywhere, Category = "Squad") float AlertRadius = 3500.f;
 	UPROPERTY(EditAnywhere, Category = "Squad") float FlankInterval = 14.f;
 

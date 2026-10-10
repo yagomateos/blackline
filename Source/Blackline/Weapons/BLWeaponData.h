@@ -125,16 +125,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire", meta = (ClampMin = "1")) float RoundsPerMinute = 750.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float Damage = 28.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float HeadshotMultiplier = 2.5f;
+	/** Un impacto del jugador en la cabeza de un enemigo lo mata (armas de una sola bala; los perdigones siguen sus reglas). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") bool bHeadshotKills = true;
 	/** Brazos y piernas. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float LimbMultiplier = 0.75f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float MaxRange = 15000.f;
+	/** Alcance del trazado (cm). 300 m: más que la línea de vista más larga de las misiones. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float MaxRange = 30000.f;
 	/** Distancia a la que la IA oye el disparo (cm) y a la que nota los impactos cercanos. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float NoiseRange = 4000.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float ImpactNoiseRange = 900.f;
-	/** Caída de daño con la distancia (cm). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float FalloffStart = 3000.f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float FalloffEnd = 8000.f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float FalloffMinMultiplier = 0.65f;
+	/** Caída de daño con la distancia (cm). Fusil: entera hasta 60 m y el 80 % desde 150 m (antes 30-80 m y 65 %:
+	 *  a 80 m hacían falta 7 impactos al torso y parecía que las balas no hacían daño). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float FalloffStart = 6000.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float FalloffEnd = 15000.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float FalloffMinMultiplier = 0.8f;
 	/** Perdigones por disparo (escopeta). Cada uno hace Damage; el hitmarker suma los de un mismo blanco. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire", meta = (ClampMin = "1")) int32 PelletCount = 1;
 	/** Semiángulo del cono de los perdigones (grados) desde la cadera y apuntando; se suma a la dispersión normal. */

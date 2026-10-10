@@ -1,5 +1,10 @@
 #include "Player/BLCharacter.h"
 
+#include "Vehicles/BLBoat.h"
+#include "UI/BLMenuData.h"
+#include "Mission/BLCampaignProgress.h"
+#include "Weapons/BLMountedGun.h"
+
 #include "Blackline.h"
 #include "Player/BLFirstPersonRigComponent.h"
 #include "Player/BLSpring.h"
@@ -205,8 +210,37 @@ ABLCharacter::ABLCharacter(const FObjectInitializer& ObjectInitializer)
 	GrenadeThrowSound = LoadDefault<USoundBase>(TEXT("/Game/Audio/Weapons/Grenade/SW_Grenade_Throw.SW_Grenade_Throw"));
 }
 
+void ABLCharacter::ApplyLoadout()
+{
+	// Principal: la que imponga la misión, si no la elegida en EQUIPAMIENTO. Las pruebas automáticas llevan el AR-7
+	// salvo -BLLoadout=<id> (la del menú prueba justamente la elección del jugador)
+	if (!Weapon || Weapon->StartingWeapons.Num() == 0)
+	{
+		return;
+	}
+	FString Id = UBLUserSettings::Get()->LoadoutPrimary;
+	FString Test;
+	if (FParse::Value(FCommandLine::Get(), TEXT("BLTest="), Test) && !Test.Equals(TEXT("Menu"), ESearchCase::IgnoreCase))
+	{
+		Id = TEXT("AR7");
+		FParse::Value(FCommandLine::Get(), TEXT("BLLoadout="), Id);
+	}
+	const int32 Mission = BLCampaign::FindMission(UGameplayStatics::GetCurrentLevelName(this));
+	if (Mission != INDEX_NONE && BLMenuData::Missions[Mission].ForcedPrimary)
+	{
+		Id = BLMenuData::Missions[Mission].ForcedPrimary;
+	}
+	const BLMenuData::FLoadoutWeapon& Pick = BLMenuData::LoadoutPrimaries[BLMenuData::FindPrimary(Id)];
+	if (UBLWeaponData* Data = LoadObject<UBLWeaponData>(nullptr, Pick.Asset))
+	{
+		Weapon->StartingWeapons[0] = Data;
+		UE_LOG(LogBlackline, Log, TEXT("[Equipamiento] Principal %s (%s)"), Pick.Id, *Data->GetName());
+	}
+}
+
 void ABLCharacter::BeginPlay()
 {
+	ApplyLoadout();
 	Super::BeginPlay();
 
 	SmoothedEyeHeight = EyeHeightStanding;
@@ -338,7 +372,12 @@ void ABLCharacter::LookInput(const FInputActionValue& Value)
 
 void ABLCharacter::DoMove(float Right, float Forward)
 {
-	if (bDead || IsMounted())
+	if (ABLBoat* Boat = DrivenBoat.Get(); Boat && !bDead)
+	{
+		Boat->AddDriveInput(Forward, Right);   // W/S acelerador, A/D timón
+		return;
+	}
+	if (bDead || IsInVehicleOrMount())
 	{
 		return;
 	}
@@ -371,7 +410,7 @@ void ABLCharacter::DoLook(float Yaw, float Pitch)
 
 void ABLCharacter::DoJumpOrMantle()
 {
-	if (bDead || IsMounted())
+	if (bDead || IsInVehicleOrMount())
 	{
 		return;
 	}
@@ -398,7 +437,7 @@ void ABLCharacter::DoStopJump()
 
 void ABLCharacter::SetSprintHeld(bool bHeld)
 {
-	bSprintHeld = bHeld && !bDead && !IsMounted();
+	bSprintHeld = bHeld && !bDead && !IsInVehicleOrMount();
 	if (bHeld && bIsCrouched)
 	{
 		UnCrouch();
@@ -407,7 +446,7 @@ void ABLCharacter::SetSprintHeld(bool bHeld)
 
 void ABLCharacter::ToggleCrouch()
 {
-	if (bDead)
+	if (bDead || IsDrivingBoat())
 	{
 		return;
 	}
@@ -432,9 +471,24 @@ void ABLCharacter::SetAimHeld(bool bHeld) { bAimHeld = bHeld && !bDead; }
 
 void ABLCharacter::SetFireHeld(bool bHeld)
 {
+	// Al montar o desmontar con el gatillo apretado, hay que soltarlo antes de volver a disparar (ni la ametralladora
+	// ni el fusil heredan una pulsación de la otra arma)
+	bFireInputHeld = bHeld;
+	if (!bHeld)
+	{
+		bFireNeedsRelease = false;
+	}
+	else if (bFireNeedsRelease)
+	{
+		return;
+	}
 	if (IsMounted())
 	{
 		MountGunTrigger(bHeld);
+		return;
+	}
+	if (IsDrivingBoat() || IsInVehicleSeat())
+	{
 		return;
 	}
 	if (Weapon)
@@ -445,7 +499,7 @@ void ABLCharacter::SetFireHeld(bool bHeld)
 
 void ABLCharacter::DoReload()
 {
-	if (bDead || IsMounted())
+	if (bDead || IsInVehicleOrMount())
 	{
 		return;
 	}
@@ -844,7 +898,9 @@ void ABLCharacter::UpdateSprint(float DeltaTime)
 
 void ABLCharacter::UpdateStance(float DeltaTime)
 {
-	const float Target = bIsCrouched ? EyeHeightCrouched : EyeHeightStanding;
+	// Montado: agachado detrás del arma, con los ojos en su línea de mira
+	const ABLMountedGun* Gun = MountedGun.Get();
+	const float Target = Gun ? Gun->GetSightHeight() : bIsCrouched ? EyeHeightCrouched : EyeHeightStanding;
 	SmoothedEyeHeight = BLExpInterp(SmoothedEyeHeight, Target, DeltaTime, EyeHeightInterpSpeed);
 }
 

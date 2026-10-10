@@ -1,6 +1,8 @@
 #include "UI/SBLMainMenu.h"
 
 #include "Mission/BLCampaignProgress.h"
+#include "Weapons/BLWeaponData.h"
+#include "UI/BLUserSettings.h"
 
 #include "UI/BLMenuData.h"
 #include "UI/BLMenuPlayerController.h"
@@ -50,6 +52,19 @@ namespace
 		];
 	}
 
+	/** Fila de equipamiento fija (sin flechas: no se puede cambiar). */
+	TSharedRef<SWidget> FixedRow(const FText& Label, const FText& Value)
+	{
+		return SNew(SBox).Padding(FMargin(10.f, 6.f))
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+			[SNew(STextBlock).Font(BLMenu::Sans(13, true)).ColorAndOpacity(FSlateColor(BLMenu::Text)).Text(Label)]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 8.f, 0.f)
+			[SNew(STextBlock).Font(BLMenu::Mono(13)).ColorAndOpacity(FSlateColor(BLMenu::TextDim)).Text(Value)]
+		];
+	}
+
 	TSharedRef<SWidget> StatBar(const FText& Label, TFunction<float()> Value)
 	{
 		return SNew(SHorizontalBox)
@@ -87,6 +102,7 @@ void SBLMainMenu::Construct(const FArguments& InArgs)
 			+ SWidgetSwitcher::Slot()[IntelPage()]
 			+ SWidgetSwitcher::Slot()[OptionsPage()]
 			+ SWidgetSwitcher::Slot()[QuitPage()]
+			+ SWidgetSwitcher::Slot()[EquipPage()]
 		]
 		// Estado del enlace y reloj (arriba a la derecha)
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(0.f, 28.f, 40.f, 0.f)
@@ -149,7 +165,7 @@ TSharedRef<SWidget> SBLMainMenu::MainPage()
 	const FText PlayHint = T(*FString::Printf(TEXT("%sMISIÓN %s · %s"), BLCampaign::IsCampaignComplete() ? TEXT("CAMPAÑA COMPLETADA · ") : TEXT(""),
 		BLMenuData::Missions[PlayMission].Code, BLMenuData::Missions[PlayMission].Name));
 	TSharedRef<SWidget> Play = SNew(SBLMenuButton).Text(bContinue ? LOCTEXT("Continue", "CONTINUAR") : LOCTEXT("Play", "JUGAR")).Hint(PlayHint)
-		.OnClicked_Lambda([this, PlayMission]() { SelectedMission = PlayMission; StartPhase = 0; if (Owner.IsValid()) { Owner->StartMission(PlayMission, 0); } });
+		.OnClicked_Lambda([this, PlayMission]() { SelectedMission = PlayMission; StartPhase = 0; OpenEquip(PlayMission, 0); });
 	FirstFocus.Add(int32(EPage::Main), Play);
 	auto Btn = [this](const FText& Text, const FText& Hint, EPage To)
 	{
@@ -189,7 +205,7 @@ TSharedRef<SWidget> SBLMainMenu::MissionsPage()
 			.Hint(M.bAvailable ? T(*FString::Printf(TEXT("%s%s"), BLCampaign::IsCompleted(i) ? TEXT("COMPLETADA · ") : TEXT(""), M.Place))
 				: LOCTEXT("Locked", "NO DISPONIBLE EN EL VERTICAL SLICE"))
 			.OnHighlighted_Lambda([this, i]() { if (SelectedMission != i) { SelectedMission = i; StartPhase = 0; } })
-			.OnClicked_Lambda([this, i]() { SelectedMission = i; if (Owner.IsValid()) { Owner->StartMission(i, StartPhase); } });
+			.OnClicked_Lambda([this, i]() { SelectedMission = i; OpenEquip(i, StartPhase); });
 		if (i == 0)
 		{
 			FirstFocus.Add(int32(EPage::Missions), B);
@@ -213,7 +229,7 @@ TSharedRef<SWidget> SBLMainMenu::MissionsPage()
 	List->AddSlot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
 	[
 		SNew(SBLMenuButton).Text(LOCTEXT("Deploy", "DESPLEGAR")).Hint_Lambda([this]() { return T(*FString::Printf(TEXT("MISIÓN %s"), BLMenuData::Missions[SelectedMission].Code)); })
-		.OnClicked_Lambda([this]() { if (Owner.IsValid()) { Owner->StartMission(SelectedMission, StartPhase); } })
+		.OnClicked_Lambda([this]() { OpenEquip(SelectedMission, StartPhase); })
 	];
 	List->AddSlot().AutoHeight()[SNew(SBLMenuButton).Text(LOCTEXT("Back", "VOLVER")).FontSize(16).OnClicked_Lambda([this]() { Back(); })];
 
@@ -384,7 +400,119 @@ void SBLMainMenu::FocusFirst()
 void SBLMainMenu::Back()
 {
 	BLMenu::PlayBack();
-	ShowPage(Page == EPage::Main ? EPage::Quit : EPage::Main);
+	ShowPage(Page == EPage::Main ? EPage::Quit : Page == EPage::Equip ? EquipFrom : EPage::Main);
+}
+
+void SBLMainMenu::OpenEquip(int32 Mission, int32 Phase)
+{
+	EquipMission = FMath::Clamp(Mission, 0, int32(UE_ARRAY_COUNT(BLMenuData::Missions)) - 1);
+	EquipPhase = Phase;
+	EquipFrom = Page == EPage::Equip ? EquipFrom : Page;
+	const TCHAR* Forced = BLMenuData::Missions[EquipMission].ForcedPrimary;
+	EquipPrimary = BLMenuData::FindPrimary(Forced ? FString(Forced) : UBLUserSettings::Get()->LoadoutPrimary);
+	ShowPage(EPage::Equip);
+}
+
+void SBLMainMenu::SetEquipPrimary(int32 Index)
+{
+	if (BLMenuData::Missions[EquipMission].ForcedPrimary)
+	{
+		return;   // la misión impone el arma
+	}
+	const int32 N = UE_ARRAY_COUNT(BLMenuData::LoadoutPrimaries);
+	EquipPrimary = (Index % N + N) % N;
+}
+
+void SBLMainMenu::ConfirmEquipAndDeploy()
+{
+	UBLUserSettings* S = UBLUserSettings::Get();
+	S->LoadoutPrimary = BLMenuData::LoadoutPrimaries[EquipPrimary].Id;
+	S->LoadoutSecondary = BLMenuData::LoadoutSecondaries[0].Id;
+	S->Save();
+	if (Owner.IsValid())
+	{
+		Owner->StartMission(EquipMission, EquipPhase);
+	}
+}
+
+TSharedRef<SWidget> SBLMainMenu::EquipPage()
+{
+	// Ficha del arma (de BLMenuData) + munición real del asset que se va a equipar
+	auto Primary = [this]() -> const BLMenuData::FWeapon& { return BLMenuData::Weapons[BLMenuData::LoadoutPrimaries[EquipPrimary].MenuIndex]; };
+	auto Ammo = [this]() -> FText
+	{
+		const UBLWeaponData* D = LoadObject<UBLWeaponData>(nullptr, BLMenuData::LoadoutPrimaries[EquipPrimary].Asset);
+		if (!D)
+		{
+			return FText::GetEmpty();
+		}
+		const int32 Chamber = D->bChamberRound ? 1 : 0;
+		return T(*FString::Printf(TEXT("CARGADOR %d+%d  ·  RESERVA %d  ·  %s"), D->MagazineSize, Chamber, D->StartReserveAmmo,
+			D->ReloadStyle == EBLReloadStyle::Shells ? TEXT("RECARGA CARTUCHO A CARTUCHO") : TEXT("RECARGA POR CARGADOR")));
+	};
+	auto Forced = [this]() { return BLMenuData::Missions[EquipMission].ForcedPrimary != nullptr; };
+
+	TSharedRef<SWidget> PrimaryRow = SNew(SBLSelectorRow).Label(LOCTEXT("EqPrimary", "ARMA PRINCIPAL"))
+		.Value_Lambda([this, Primary, Forced]() { return T(*FString::Printf(TEXT("%s%s"), Primary().Name, Forced() ? TEXT("  (IMPUESTA)") : TEXT(""))); })
+		.OnStep_Lambda([this](int32 Dir) { SetEquipPrimary(EquipPrimary + Dir); });
+	FirstFocus.Add(int32(EPage::Equip), PrimaryRow);
+
+	static const TCHAR* StatNames[] = { TEXT("DAÑO"), TEXT("CADENCIA"), TEXT("ALCANCE"), TEXT("CONTROL"), TEXT("MOVILIDAD") };
+	TSharedRef<SVerticalBox> Stats = SNew(SVerticalBox);
+	for (int32 s = 0; s < 5; ++s)
+	{
+		Stats->AddSlot().AutoHeight()[StatBar(T(StatNames[s]), [Primary, s]() { return Primary().Stats[s]; })];
+	}
+
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth()
+		[
+			Column(600.f, SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot().AutoHeight()
+					[SNew(STextBlock).Font(BLMenu::Mono(11)).ColorAndOpacity(FSlateColor(BLMenu::AmberDim)).Text(LOCTEXT("EqKicker", "BLACKLINE"))]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 0.f)
+					[SNew(STextBlock).Font(BLMenu::Sans(30, true)).ColorAndOpacity(FSlateColor(BLMenu::Text)).Text(LOCTEXT("EqTitle", "EQUIPAMIENTO"))]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 26.f)
+					[SNew(STextBlock).Font(BLMenu::Mono(11)).ColorAndOpacity(FSlateColor(BLMenu::TextDim))
+						.Text_Lambda([this]() { return T(*FString::Printf(TEXT("MISIÓN %s · %s · SABLE 2-1"), BLMenuData::Missions[EquipMission].Code, BLMenuData::Missions[EquipMission].Name)); })]
+				]
+				+ SVerticalBox::Slot().AutoHeight()[PrimaryRow]
+				+ SVerticalBox::Slot().AutoHeight()[FixedRow(LOCTEXT("EqSecondary", "ARMA SECUNDARIA"), T(BLMenuData::Weapons[BLMenuData::LoadoutSecondaries[0].MenuIndex].Name))]
+				+ SVerticalBox::Slot().AutoHeight()[FixedRow(LOCTEXT("EqGrenades", "GRANADAS"), LOCTEXT("EqGrenadesV", "2 × M-6 FRAGMENTACIÓN"))]
+				+ SVerticalBox::Slot().AutoHeight().Padding(14.f, 10.f, 0.f, 18.f)
+				[SNew(STextBlock).Font(BLMenu::Mono(10)).ColorAndOpacity(FSlateColor(BLMenu::TextDim)).AutoWrapText(true)
+					.Text(LOCTEXT("EqHelp", "← →  CAMBIAR ARMA  ·  ENTER  CONFIRMAR  ·  ESC  VOLVER\nLA SECUNDARIA SE LLEVA SIEMPRE (TECLA 2). EN LA MISIÓN SE PUEDEN RECOGER ARMAS DEL SUELO."))]
+				+ SVerticalBox::Slot().AutoHeight()
+				[SNew(SBLMenuButton).Text(LOCTEXT("EqStart", "COMENZAR MISIÓN"))
+					.Hint_Lambda([this, Primary]() { return T(*FString::Printf(TEXT("%s + P-17"), Primary().Name)); })
+					.OnClicked_Lambda([this]() { ConfirmEquipAndDeploy(); })]
+				+ SVerticalBox::Slot().AutoHeight()[SNew(SBLMenuButton).Text(LOCTEXT("Back", "VOLVER")).FontSize(16).OnClicked_Lambda([this]() { Back(); })])
+		]
+		+ SHorizontalBox::Slot().FillWidth(1.f)[SNew(SSpacer)]
+		+ SHorizontalBox::Slot().AutoWidth()
+		[
+			DetailPanel(SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()
+				[SNew(STextBlock).Font(BLMenu::Mono(11)).ColorAndOpacity(FSlateColor(BLMenu::AmberDim)).Text(LOCTEXT("EqSel", "PRINCIPAL SELECCIONADA"))]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 0.f)
+				[SNew(STextBlock).Font(BLMenu::Sans(28, true)).ColorAndOpacity(FSlateColor(BLMenu::Amber)).Text_Lambda([Primary]() { return T(Primary().Name); })]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 4.f)
+				[SNew(STextBlock).Font(BLMenu::Mono(11)).ColorAndOpacity(FSlateColor(BLMenu::TextDim)).Text_Lambda([Primary]() { return T(Primary().Class); })]
+				+ SVerticalBox::Slot().AutoHeight()
+				[SNew(STextBlock).Font(BLMenu::Mono(11)).ColorAndOpacity(FSlateColor(BLMenu::Text)).AutoWrapText(true).Text_Lambda([Primary]() { return T(Primary().Specs); })]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 14.f)
+				[SNew(STextBlock).Font(BLMenu::Mono(11)).ColorAndOpacity(FSlateColor(BLMenu::Amber)).AutoWrapText(true).Text_Lambda(Ammo)]
+				+ SVerticalBox::Slot().AutoHeight()[Stats]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 14.f, 0.f, 0.f)
+				[SNew(STextBlock).Font(BLMenu::Sans(14)).ColorAndOpacity(FSlateColor(BLMenu::Text)).AutoWrapText(true).Text_Lambda([Primary]() { return T(Primary().Text); })]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 18.f, 0.f, 0.f)
+				[SNew(STextBlock).Font(BLMenu::Mono(11)).ColorAndOpacity(FSlateColor(BLMenu::TextDim))
+					.Text_Lambda([]() { const BLMenuData::FWeapon& W = BLMenuData::Weapons[BLMenuData::LoadoutSecondaries[0].MenuIndex];
+						return T(*FString::Printf(TEXT("SECUNDARIA  %s  ·  %s"), W.Name, W.Specs)); })])
+		];
 }
 
 FReply SBLMainMenu::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)

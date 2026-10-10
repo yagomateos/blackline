@@ -24,6 +24,12 @@ void ABLCharacter::SetInteractHeld(bool bHeld)
 			return;
 		}
 	}
+	// Pilotando la lancha: F no hace nada (se baja al llegar)
+	if (IsDrivingBoat())
+	{
+		bInteractHeld = false;
+		return;
+	}
 	// Montado en la ametralladora: F la suelta
 	if (bHeld && IsMounted())
 	{
@@ -46,7 +52,7 @@ void ABLCharacter::UpdateInteraction(float DeltaTime)
 {
 	// El objeto más centrado en la vista dentro del alcance (los objetos pequeños, como el disco, no exigen apuntar exacto)
 	ABLInteractable* Best = nullptr;
-	if (!bDead && !IsMounted())
+	if (!bDead && !IsInVehicleOrMount())
 	{
 		const FVector Eye = Camera->GetComponentLocation();
 		const FVector Fwd = Camera->GetForwardVector();

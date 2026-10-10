@@ -19,6 +19,7 @@ class UBLSurfaceEffectsData;
 class USoundBase;
 class UAudioComponent;
 class ABLMountedGun;
+class ABLBoat;
 class ABLInteractable;
 struct FInputActionValue;
 
@@ -91,6 +92,20 @@ public:
 	void DismountGun();
 	ABLMountedGun* GetMountedGun() const { return MountedGun.Get(); }
 	bool IsMounted() const { return MountedGun.IsValid(); }
+
+	// ---- Lancha (misión 2): el jugador la pilota de pie junto a la consola ----
+	void BoardBoat(ABLBoat* Boat);
+	/** Arma principal según EQUIPAMIENTO (o la que imponga la misión); antes de crear el inventario. */
+	void ApplyLoadout();
+	void LeaveBoat();
+	bool IsDrivingBoat() const { return DrivenBoat.IsValid(); }
+	ABLBoat* GetDrivenBoat() const { return DrivenBoat.Get(); }
+	/** Pasajero (el helicóptero de extracción): dentro del vehículo, sin andar ni disparar; puede mirar. */
+	void EnterVehicleSeat(USceneComponent* Seat, float LookYaw);
+	bool IsInVehicleSeat() const { return VehicleSeat.IsValid(); }
+	/** Montado en un arma, pilotando o de pasajero: no anda, no salta y no usa el arma propia. */
+	bool IsInVehicleOrMount() const { return IsMounted() || IsDrivingBoat() || IsInVehicleSeat(); }
+	bool IsFireBlockedUntilRelease() const { return bFireNeedsRelease; }
 	void MountGunTrigger(bool bHeld);
 	bool IsAiming() const { return bIsAiming; }
 	bool IsMantling() const { return bIsMantling; }
@@ -377,6 +392,11 @@ private:
 	TWeakObjectPtr<class ABLGrenade> LastGrenade;
 
 	TWeakObjectPtr<ABLMountedGun> MountedGun;
+	TWeakObjectPtr<ABLBoat> DrivenBoat;
+	TWeakObjectPtr<USceneComponent> VehicleSeat;
+	/** Tras montar/desmontar un arma: la pulsación de disparo en curso no cuenta hasta soltarla. */
+	bool bFireNeedsRelease = false;
+	bool bFireInputHeld = false;
 	FVector2D SavedViewPitch = FVector2D(-89.9f, 89.9f);
 	FVector2D SavedViewYaw = FVector2D(0.f, 359.999f);
 };

@@ -7,7 +7,9 @@ namespace BLMenuData
 {
 	/** Map: nivel; FirstPhase/NumPhases: sus puntos de inicio dentro de StartPhases / StartPhaseIds. */
 	struct FMission { const TCHAR* Code; const TCHAR* Name; const TCHAR* Place; bool bAvailable; const TCHAR* Briefing;
-		const TCHAR* Map = nullptr; int32 FirstPhase = 0; int32 NumPhases = 0; };
+		const TCHAR* Map = nullptr; int32 FirstPhase = 0; int32 NumPhases = 0;
+		/** Id de LoadoutPrimaries que la misión impone (nullptr = la elige el jugador en EQUIPAMIENTO). */
+		const TCHAR* ForcedPrimary = nullptr; };
 	struct FWeapon { const TCHAR* Name; const TCHAR* Class; const TCHAR* Specs; const TCHAR* Text; bool bAvailable; float Stats[5]; };
 	struct FIntel { const TCHAR* Title; const TCHAR* Body; };
 
@@ -68,11 +70,29 @@ namespace BLMenuData
 		{ TEXT("AR-7 \"HALCÓN\""), TEXT("FUSIL DE ASALTO · PRINCIPAL"), TEXT("5,56 MM · 750 DPM · CARGADOR 30+1 · MIRAS METÁLICAS DE ANILLO"),
 			TEXT("Fusil de pistón corto con guardamanos M-LOK y apagallamas de jaula. Preciso y controlable en ráfagas cortas; "
 				 "la recarga táctica deja una bala en la recámara."), true, { 0.6f, 0.7f, 0.7f, 0.65f, 0.6f } },
-		{ TEXT("P-17"), TEXT("PISTOLA · SECUNDARIA"), TEXT("9 MM · SEMIAUTOMÁTICA · CARGADOR 17"), TEXT("Arma de apoyo para cuando el fusil se queda sin cargador."), false, { 0.35f, 0.4f, 0.3f, 0.75f, 0.95f } },
-		{ TEXT("SG-12 \"MASTÍN\""), TEXT("ESCOPETA · CQB"), TEXT("CAL. 12 · CORREDERA · 8 CARTUCHOS"), TEXT("Para despejar pisos y escaleras en el asalto al bloque de viviendas."), false, { 0.95f, 0.2f, 0.15f, 0.4f, 0.55f } },
+		{ TEXT("P-17"), TEXT("PISTOLA · SECUNDARIA"), TEXT("9 MM · SEMIAUTOMÁTICA · CARGADOR 17"), TEXT("Arma de apoyo para cuando el fusil se queda sin cargador."), true, { 0.35f, 0.4f, 0.3f, 0.75f, 0.95f } },
+		{ TEXT("SG-12 \"MASTÍN\""), TEXT("ESCOPETA · CQB"), TEXT("CAL. 12 · CORREDERA · 7+1 CARTUCHOS · 9 PERDIGONES"), TEXT("Escopeta de corredera para interiores: devastadora a menos de 15 m, inútil a distancia. Se recarga cartucho a cartucho."), true, { 0.95f, 0.2f, 0.15f, 0.4f, 0.55f } },
 		{ TEXT("SMG-9 \"VESPER\""), TEXT("SUBFUSIL · CQB"), TEXT("9 MM · 900 DPM · CARGADOR 30"), TEXT("Compacto y rápido para interiores."), false, { 0.4f, 0.9f, 0.35f, 0.6f, 0.85f } },
 		{ TEXT("M-6"), TEXT("GRANADA DE FRAGMENTACIÓN"), TEXT("ESPOLETA DE 4 S · RADIO LETAL 5 M"), TEXT("Saca al enemigo de su cobertura."), false, { 0.9f, 0.1f, 0.4f, 0.5f, 0.9f } },
 	};
+
+	/** Armas que se pueden elegir en EQUIPAMIENTO: id (UBLUserSettings::LoadoutPrimary), ficha en Weapons[] y asset real. */
+	struct FLoadoutWeapon { const TCHAR* Id; int32 MenuIndex; const TCHAR* Asset; };
+	inline const FLoadoutWeapon LoadoutPrimaries[] = {
+		{ TEXT("AR7"), 0, TEXT("/Game/Weapons/AR7/DA_AR7.DA_AR7") },
+		{ TEXT("SG12"), 2, TEXT("/Game/Weapons/SG12/DA_SG12.DA_SG12") },
+	};
+	inline const FLoadoutWeapon LoadoutSecondaries[] = {
+		{ TEXT("P17"), 1, TEXT("/Game/Weapons/P17/DA_P17.DA_P17") },
+	};
+	inline int32 FindPrimary(const FString& Id)
+	{
+		for (int32 i = 0; i < UE_ARRAY_COUNT(LoadoutPrimaries); ++i)
+		{
+			if (Id.Equals(LoadoutPrimaries[i].Id, ESearchCase::IgnoreCase)) { return i; }
+		}
+		return 0;
+	}
 
 	inline const FIntel Intel[] = {
 		{ TEXT("KESSRA"), TEXT("Segunda ciudad de la República de Varania y su gran puerto de aguas profundas: 900.000 habitantes antes de la guerra, "

@@ -29,7 +29,7 @@ namespace
 	constexpr float DeathFadeStart = 1.6f;
 	constexpr float DeathFadeTime = 1.4f;
 	/** Vida de los indicadores direccionales de daño. */
-	constexpr float IndicatorLife = 1.8f;
+	constexpr float IndicatorLife = 2.6f;   // el HUD lo desvanece en los últimos 0,8 s
 }
 
 void ABLCharacter::InitCombat()
@@ -115,7 +115,7 @@ void ABLCharacter::HandleDamaged(const FBLDamageInfo& Info)
 		-DamageCameraKick.Yaw * Side * Strength * Rand, -DamageCameraKick.Roll * (Side >= 0.f ? 1.f : -1.f) * Strength * Rand));
 	FirstPersonRig->AddWeaponKick(FVector(-20.f, -12.f * Side, -15.f) * Strength, FRotator(-12.f, 8.f * Side, -10.f * Side) * Strength);
 
-	DamageFlash = FMath::Min(1.f, DamageFlash + 0.55f * Strength);
+	DamageFlash = FMath::Min(1.f, DamageFlash + 0.6f * Strength);
 	FDamageIndicator Indicator;
 	Indicator.Source = Info.SourceLocation;
 	Indicator.Time = GetWorld()->GetTimeSeconds();
@@ -134,6 +134,7 @@ void ABLCharacter::HandleDeath(const FBLDamageInfo& Info)
 	{
 		DismountGun();
 	}
+	LeaveBoat();   // la lancha vuelve a recogerlo al reaparecer
 	if (bDead)
 	{
 		return;
@@ -273,11 +274,11 @@ void ABLCharacter::UpdateCombat(float DeltaTime)
 
 	const float Now = GetWorld()->GetTimeSeconds();
 	DamageIndicators.RemoveAll([Now](const FDamageIndicator& I) { return Now - I.Time > IndicatorLife; });
-	DamageFlash = FMath::Max(0.f, DamageFlash - DeltaTime * 1.6f);
+	DamageFlash = FMath::Max(0.f, DamageFlash - DeltaTime * 1.1f);
 
 	// Pantalla dañada: viñeta más cerrada y tinte rojo oscuro según la salud que falta + destello del golpe
 	const float Frac = Health->GetHealthFraction();
-	const float Low = FMath::SmoothStep(0.6f, 0.15f, Frac);
+	const float Low = 1.f - FMath::SmoothStep(0.15f, 0.6f, Frac);   // (SmoothStep(0.6, 0.15) devolvía siempre 0: nunca se veía)
 	const float DeadDim = bDead ? FMath::Clamp(DeathTime / DeathFallTime, 0.f, 1.f) : 0.f;
 	FPostProcessSettings& PP = Camera->PostProcessSettings;
 	PP.bOverride_VignetteIntensity = true;

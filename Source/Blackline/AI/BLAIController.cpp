@@ -388,8 +388,10 @@ void ABLAIController::TickPerception(float DeltaTime)
 		// Puntería: el error baja mientras lo tiene a la vista (más rápido si el jugador está quieto)
 		const float Moving = Player->GetVelocity().Size2D() > 250.f ? 1.6f : 1.f;
 		const float Skill = Enemy() && Enemy()->IsCorvane() ? 0.5f : 1.f;   // Corvane: mucho mejor puntería
-		const float MinError = (AimErrorMin * Moving + FVector::Dist(Player->GetActorLocation(), GetPawn()->GetActorLocation()) * 0.012f) * Skill;
-		AimError = FMath::FInterpTo(AimError, MinError, DeltaTime, 0.7f);
+		// Equilibrio medido con la prueba "Aguante" (2026-10-10): antes 3 milicianos a 20 m mataban 0,3 s después del primer
+		// impacto; la puntería converge más despacio y con más error por distancia
+		const float MinError = (AimErrorMin * Moving + FVector::Dist(Player->GetActorLocation(), GetPawn()->GetActorLocation()) * 0.015f) * Skill;
+		AimError = FMath::FInterpTo(AimError, MinError, DeltaTime, 0.6f);
 	}
 	else
 	{
@@ -715,8 +717,8 @@ void ABLAIController::TickShooting(float DeltaTime, bool bAllowed)
 		BurstPause -= DeltaTime;
 		if (BurstPause <= 0.f)
 		{
-			BurstLeft = bSniper ? 1 : bGunner ? FMath::RandRange(8, 15) : FMath::RandRange(3, 7);
-			BurstPause = bSniper ? FMath::FRandRange(1.4f, 2.1f) : bGunner ? FMath::FRandRange(0.9f, 1.8f) : FMath::FRandRange(0.45f, 1.1f);
+			BurstLeft = bSniper ? 1 : bGunner ? FMath::RandRange(8, 15) : FMath::RandRange(2, 5);
+			BurstPause = bSniper ? FMath::FRandRange(1.4f, 2.1f) : bGunner ? FMath::FRandRange(0.9f, 1.8f) : FMath::FRandRange(0.6f, 1.3f);
 		}
 		return;
 	}

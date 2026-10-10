@@ -164,7 +164,7 @@ void ABLMenuPlayerController::Tick(float DeltaTime)
 			// El último paso (despliegue) lo verifica ABLGameMode en el nivel de la misión y añade su línea al fichero
 			TestResults.Add(FString::Printf(TEXT("RESUMEN Menu (parcial): %d PASS, %d FAIL"), TestPassed, TestFailed));
 			FFileHelper::SaveStringArrayToFile(TestResults, *(FPaths::ProjectSavedDir() / TEXT("BLTest/Menu_results.txt")), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-			StartMission(0, 1);
+			Menu->ConfirmEquipAndDeploy();   // guarda el equipamiento y despliega (misión 01, fase 2)
 		}
 	}
 }
@@ -219,6 +219,14 @@ void ABLMenuPlayerController::BuildTest()
 		[PageIs](FString& D) { return PageIs(SBLMainMenu::EPage::Quit, D, TEXT("confirmar salida")); } });
 	TestSteps.Add({ TEXT("Volver"), 0.6f, [this]() { Menu->ShowPage(SBLMainMenu::EPage::Main); },
 		[PageIs](FString& D) { return PageIs(SBLMainMenu::EPage::Main, D, TEXT("principal")); } });
+	// Equipamiento: desde la selección de misión, elegir la escopeta (se despliega con ella: lo comprueba ABLGameMode)
+	TestSteps.Add({ TEXT("Equipamiento"), 1.5f, [this]() { Menu->ShowPage(SBLMainMenu::EPage::Missions); Menu->OpenEquip(0, 1); Menu->SetEquipPrimary(1); },
+		[this, PageIs](FString& D)
+		{
+			const bool bPage = PageIs(SBLMainMenu::EPage::Equip, D, TEXT("equipamiento"));
+			D += FString::Printf(TEXT(", principal elegida %s"), BLMenuData::LoadoutPrimaries[Menu->GetEquipPrimary()].Id);
+			return bPage && Menu->GetEquipPrimary() == 1;
+		} });
 	TestIndex = 0;
 	TestTime = 0.f;
 }

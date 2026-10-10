@@ -18,9 +18,14 @@ struct FBLSpringVector
 		{
 			return;
 		}
+		// Euler semiimplícito: estable solo si Omega * H < 2. Con 8 pasos fijos, un frame largo (tirón, carga, captura)
+		// daba pasos de 50 ms y el muelle explotaba: la cámara giraba 80° un frame y las balas salían desviadas.
+		// Pasos según la frecuencia (H <= 0,5 / Omega) y como mucho 0,1 s de simulación por frame.
 		const float Omega = 2.f * PI * Frequency;
-		const int32 Steps = FMath::Clamp(FMath::CeilToInt(DeltaTime * 120.f), 1, 8);
-		const float H = DeltaTime / Steps;
+		const float Dt = FMath::Min(DeltaTime, 0.1f);
+		const float MaxH = FMath::Min(1.f / 120.f, 0.5f / FMath::Max(Omega, 1.f));
+		const int32 Steps = FMath::Clamp(FMath::CeilToInt(Dt / MaxH), 1, 64);
+		const float H = Dt / Steps;
 		for (int32 i = 0; i < Steps; ++i)
 		{
 			const FVector Accel = (Target - Value) * (Omega * Omega) - Velocity * (2.f * DampingRatio * Omega);

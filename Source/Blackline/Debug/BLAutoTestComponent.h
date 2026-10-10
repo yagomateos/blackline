@@ -76,6 +76,10 @@ private:
 	void BuildMission5FailTest();
 	/** Balas reales del jugador contra los enemigos de cualquier mapa (BLAutoTestFiring.cpp). */
 	void BuildFiringTest();
+	void BuildMountedGunTest();
+	void BuildRangeTest();
+	void BuildSurvivalTest();
+	void BuildRotorTest();
 
 	UFUNCTION()
 	void HandleShot(const FHitResult& Hit);
@@ -85,6 +89,18 @@ private:
 	void HandleHitConfirmed(EBLHitZone Zone, float Damage, bool bKilled) { ++HitConfirms; HitConfirmDamage += Damage; }
 	int32 HitConfirms = 0;
 	float HitConfirmDamage = 0.f;
+	// Prueba "Distancias": impactos confirmados por zona y el que mató
+	UFUNCTION()
+	void HandleRangeHit(EBLHitZone Zone, float Damage, bool bKilled)
+	{
+		++RangeHits;
+		RangeHeadHits += Zone == EBLHitZone::Head ? 1 : 0;
+		if (bKilled && RangeKillHit < 0) { RangeKillHit = RangeHits; RangeKillZone = Zone; }
+	}
+	int32 RangeHits = 0;
+	int32 RangeHeadHits = 0;
+	int32 RangeKillHit = -1;
+	EBLHitZone RangeKillZone = EBLHitZone::Torso;
 	TArray<FName> ReachedCheckpoints;
 	void BeginStep(int32 Index);
 	void Finish();

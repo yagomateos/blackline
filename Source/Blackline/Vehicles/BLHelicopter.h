@@ -6,7 +6,9 @@
 #include "Mission/BLDestructibleTarget.h"
 #include "BLHelicopter.generated.h"
 
+class ABLCharacter;
 class UAudioComponent;
+class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class USceneComponent;
 class USoundBase;
@@ -32,6 +34,10 @@ public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void OnMissionActivate(FName Tag) override;
+	/** Pruebas: lo deja visible, quieto en el aire (o posado) con el rotor a Rate grados/s. */
+	void ShowForTest(float Rate, bool bLanded);
+	float GetRotorRate() const { return RotorRate; }
+	bool IsRotorDiscVisible() const;
 	virtual float TakeDamage(float Damage, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
 	virtual bool IsTargetDestroyed() const override { return State == EState::Disabled; }
 
@@ -66,11 +72,20 @@ private:
 	bool FlyTo(const FVector& Goal, float DeltaTime, float MaxSpeed, float Tolerance, bool bFaceGoal);
 	void TickDoorGun(float DeltaTime);
 	void EnableBoarding();
+	UFUNCTION() void HandleBoarded(class ABLInteractable* Interactable, ABLCharacter* User);
 
 	UPROPERTY(VisibleAnywhere, Category = "Heli") TObjectPtr<USceneComponent> Root;
 	UPROPERTY(VisibleAnywhere, Category = "Heli") TObjectPtr<UStaticMeshComponent> Body;
 	UPROPERTY(VisibleAnywhere, Category = "Heli") TObjectPtr<UStaticMeshComponent> Rotor;
 	UPROPERTY(VisibleAnywhere, Category = "Heli") TObjectPtr<UStaticMeshComponent> TailRotor;
+	/** Discos de desenfoque: a régimen de vuelo se ve el disco (como en una cámara) y no las palas nítidas. */
+	/** Dentro de la cabina, junto a la puerta izquierda: ahí queda el jugador al subir. */
+	UPROPERTY(VisibleAnywhere, Category = "Heli") TObjectPtr<USceneComponent> CabinSpot;
+	UPROPERTY(VisibleAnywhere, Category = "Heli") TObjectPtr<class UPointLightComponent> CabinLight;
+	UPROPERTY(VisibleAnywhere, Category = "Heli") TObjectPtr<UStaticMeshComponent> RotorDisc;
+	UPROPERTY(VisibleAnywhere, Category = "Heli") TObjectPtr<UStaticMeshComponent> TailRotorDisc;
+	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> RotorDiscMID;
+	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TailRotorDiscMID;
 	UPROPERTY(VisibleAnywhere, Category = "Heli") TObjectPtr<USpotLightComponent> Searchlight;
 	UPROPERTY(VisibleAnywhere, Category = "Heli") TObjectPtr<UAudioComponent> RotorSound;
 	UPROPERTY() TArray<TObjectPtr<USoundBase>> DoorGunSounds;
@@ -87,5 +102,9 @@ private:
 	FVector Velocity = FVector::ZeroVector;
 	FRotator Attitude = FRotator::ZeroRotator;
 	float DisabledTime = 0.f;
-	float RotorRate = 1130.f;
+	/** Grados/s del rotor principal: 1800 = 300 rpm (régimen real de vuelo); el disco de desenfoque lo hace creíble. */
+	float RotorRate = 1800.f;
+	float DiscSpin = 0.f;
+
+	void UpdateRotorVisuals(float DeltaTime);
 };

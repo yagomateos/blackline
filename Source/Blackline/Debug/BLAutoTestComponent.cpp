@@ -109,6 +109,22 @@ void UBLAutoTestComponent::StartTest(const FString& TestName)
 	{
 		BuildMission4Test();
 	}
+	else if (TestName.Equals(TEXT("MountedGun"), ESearchCase::IgnoreCase))
+	{
+		BuildMountedGunTest();
+	}
+	else if (TestName.Equals(TEXT("Distancias"), ESearchCase::IgnoreCase))
+	{
+		BuildRangeTest();
+	}
+	else if (TestName.Equals(TEXT("Aguante"), ESearchCase::IgnoreCase))
+	{
+		BuildSurvivalTest();
+	}
+	else if (TestName.Equals(TEXT("Rotor"), ESearchCase::IgnoreCase))
+	{
+		BuildRotorTest();
+	}
 	else if (TestName.Equals(TEXT("Mission3"), ESearchCase::IgnoreCase))
 	{
 		BuildMission3Test();
@@ -560,7 +576,7 @@ void UBLAutoTestComponent::BuildWeaponsTest()
 		[this, W](FString& D)
 		{
 			const int32 Shots = W->GetShotsFired() - ShotsAtStart;
-			D = FString::Printf(TEXT("%d disparos en ADS, retroceso +%.1f grados, impactos %d"), Shots, PeakPitch - PitchAtStart, HitsCount);
+			D = FString::Printf(TEXT("%d disparos en ADS, retroceso +%.1f grados, impactos %d (mira al empezar a %.1f°)%s"), Shots, PeakPitch - PitchAtStart, HitsCount, PitchAtStart, *MissInfo);
 			return Shots >= 12 && HitsCount == Shots;
 		},
 		[this]() { Char()->SetFireHeld(false); Char()->SetAimHeld(false); } });

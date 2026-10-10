@@ -19,7 +19,7 @@ namespace
 
 void ABLCharacter::ThrowGrenade()
 {
-	if (bDead || IsMounted() || Grenades <= 0 || GrenadeTimer >= 0.f || bIsMantling || (GetWeapon() && GetWeapon()->IsReloading()))
+	if (bDead || IsInVehicleOrMount() || Grenades <= 0 || GrenadeTimer >= 0.f || bIsMantling || (GetWeapon() && GetWeapon()->IsReloading()))
 	{
 		return;
 	}

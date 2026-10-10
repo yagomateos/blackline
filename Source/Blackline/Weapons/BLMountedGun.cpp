@@ -60,6 +60,35 @@ FVector ABLMountedGun::GetSeatLocation() const
 	return GetActorTransform().TransformPosition(SeatOffset);
 }
 
+FVector ABLMountedGun::GetMuzzleLocation() const
+{
+	return Gun->GetComponentTransform().TransformPosition(MuzzleOffset);
+}
+
+FVector ABLMountedGun::GetBarrelDirection() const
+{
+	return Gun->GetForwardVector();
+}
+
+void ABLMountedGun::UpdateAimPoint()
+{
+	ABLCharacter* U = User.Get();
+	if (!U)
+	{
+		return;
+	}
+	const FVector Eye = U->GetCamera()->GetComponentLocation();
+	const FVector Dir = U->GetControlRotation().Vector();
+	// Lo que queda por delante de la boca (el borde de la tronera) no cuenta: el cañón ya está más allá
+	const float Skip = FVector::Dist(Eye, GetMuzzleLocation()) + 30.f;
+	const FVector Start = Eye + Dir * Skip;
+	const FVector End = Eye + Dir * Range;
+	FHitResult Hit;
+	FCollisionQueryParams Q(SCENE_QUERY_STAT(BLMountedGunAim), true, this);
+	Q.AddIgnoredActor(U);
+	AimPoint = BLDamage::WeaponTrace(GetWorld(), Hit, Start, End, Q) ? Hit.ImpactPoint : End;
+}
+
 bool ABLMountedGun::CanInteract(const ABLCharacter* InUser) const
 {
 	// Se puede montar todas las veces que haga falta (no se "gasta" como otros interactuables)
@@ -120,10 +149,12 @@ void ABLMountedGun::Tick(float DeltaTime)
 		Gun->SetRelativeRotation(FMath::RInterpTo(Gun->GetRelativeRotation(), FRotator(-6.f, 0.f, 0.f), DeltaTime, 3.f));
 		return;
 	}
-	// El arma sigue la mirada (relativa al afuste)
-	const FRotator View = U->GetControlRotation();
-	const FRotator Rel(FMath::Clamp(FRotator::NormalizeAxis(View.Pitch), PitchMin, PitchMax),
-		FMath::Clamp(FRotator::NormalizeAxis(View.Yaw - GetBaseYaw()), -YawLimit, YawLimit), 0.f);
+	// El cañón apunta al punto que marca la mira (desde el muñón, en el espacio del afuste)
+	UpdateAimPoint();
+	const FVector Pivot = Mesh->GetComponentTransform().TransformPosition(FVector(0.f, 0.f, PivotHeight));
+	const FRotator LocalAim = Mesh->GetComponentTransform().InverseTransformVectorNoScale(AimPoint - Pivot).Rotation();
+	const FRotator Rel(FMath::Clamp(FRotator::NormalizeAxis(LocalAim.Pitch), PitchMin - 2.f, PitchMax + 2.f),
+		FMath::Clamp(FRotator::NormalizeAxis(LocalAim.Yaw), -YawLimit - 2.f, YawLimit + 2.f), 0.f);
 	Gun->SetRelativeRotation(Rel + FRotator(Kick * 1.5f, 0.f, 0.f));
 	Gun->SetRelativeLocation(FVector(-Kick * 4.f, 0.f, PivotHeight));
 	if (bTrigger && OverheatTime <= 0.f)
@@ -162,15 +193,24 @@ void ABLMountedGun::FireShot()
 	Heat += HeatPerShot;
 	FlashTime = 0.f;
 	Kick = FMath::Min(Kick + 0.35f, 1.f);
-	// Desde los ojos del tirador hacia donde mira (así acierta lo que ve), con dispersión del arma
-	const FVector Eye = U->GetCamera()->GetComponentLocation();
-	const FVector Dir = FMath::VRandCone(U->GetControlRotation().Vector(), FMath::DegreesToRadians(SpreadDegrees * (1.f + Heat)));
+	// Desde la boca del cañón hacia el punto de la mira (lo que se ve es por donde va la bala), con dispersión
+	UpdateAimPoint();
+	FVector Origin = GetMuzzleLocation();
 	FHitResult Hit;
 	FCollisionQueryParams Q(SCENE_QUERY_STAT(BLMountedGun), true, this);
 	Q.AddIgnoredActor(U);
 	Q.bReturnPhysicalMaterial = true;
-	if (BLDamage::WeaponTrace(GetWorld(), Hit, Eye, Eye + Dir * 15000.f, Q))
+	// Si la boca queda tapada (el borde de la tronera a mucha depresión), la bala sale desde los ojos
+	FHitResult Block;
+	const FVector Eye = U->GetCamera()->GetComponentLocation();
+	if (GetWorld()->LineTraceSingleByChannel(Block, Eye, Origin, ECC_BLWeapon, Q))
 	{
+		Origin = Eye;
+	}
+	const FVector Dir = FMath::VRandCone((AimPoint - Origin).GetSafeNormal(), FMath::DegreesToRadians(SpreadDegrees * (1.f + Heat)));
+	if (BLDamage::WeaponTrace(GetWorld(), Hit, Origin, Origin + Dir * Range, Q))
+	{
+		LastImpact = Hit.ImpactPoint;
 		if (Hit.GetActor())
 		{
 			UGameplayStatics::ApplyPointDamage(Hit.GetActor(), Damage, Dir, Hit, U->GetController(), this, UDamageType::StaticClass());

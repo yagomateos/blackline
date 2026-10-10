@@ -50,6 +50,9 @@ private:
 	void DrawAlarm(const ABLMissionDirector* Director);
 	/** Misión 4: ametralladora montada (retícula, calor, cómo bajarse). */
 	void DrawMountedGun(const ABLCharacter* Char);
+	void DrawBoat(const ABLCharacter* Char);
+	void DrawDamageVignette(const ABLCharacter* Char);
+	void DrawHealth(const ABLCharacter* Char);
 	void DrawDeath(const ABLCharacter* Char);
 	void DrawMissionComplete(const ABLMissionDirector* Director);
 	void DrawMissionFailed(const ABLMissionDirector* Director);

@@ -31,6 +31,10 @@
 | 17 — Escopeta SG-12 + armas del suelo | ✅ Hecho (2026-10-09/10) · Shotgun **14/14** (121 fps) · regresión Weapons 16, Pistol 17, Movement 17, Combat 12, AI 12, Disparo 19, Menu OK · recarga en cola durante el bombeo · pendiente prueba del usuario |
 | 18 — Progreso de campaña | ✅ Hecho (2026-10-10) · guardado `BLCampaign.sav`, F en el resumen = siguiente misión, menú "CONTINUAR" y misiones completadas · verificado con Mission3 + `-BLPressContinue` (carga M04) y capturas del menú |
 
+### Sesión 2026-10-10 (tarde) — 8 bugs del usuario
+- Arreglados y verificados con pruebas en el juego: lancha (atraque fuera de alcance + pilotaje nuevo), barco de M3 (geometría y material PBR por UV), disparos fantasma tras la ametralladora, selección de armamento (EQUIPAMIENTO), daño a distancia, muerte rápida sin indicadores (IA reequilibrada con medición + HUD de daño; la viñeta de salud baja nunca había funcionado), puntería de la ametralladora, tiro en la cabeza letal. Y uno encontrado en la regresión: el muelle de cámara explotaba con frames largos (balas desviadas).
+- Pruebas nuevas: MountedGun, Distancias, Aguante (L_M04 / L_Dev_Movement). Detalle, causas y resultados: `BLACKLINE_MASTER_STATUS.md` §4.
+
 ### Sesión 2026-10-10 — LEER PRIMERO
 - Estado verificado, matriz de pruebas y pendientes por gravedad: **`BLACKLINE_MASTER_STATUS.md`**. Resumen de una página: `BLACKLINE_MEMORY.md`.
 - Hecho hoy: Bloque 17 (SG-12, commit f072429) verificado y arreglado; Bloque 18 (campaña, commit ab23a7f); promo en vídeo.

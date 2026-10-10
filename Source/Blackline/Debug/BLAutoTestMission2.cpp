@@ -16,10 +16,12 @@
 #include "Vehicles/BLBoat.h"
 #include "Vehicles/BLDrone.h"
 
+#include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "Engine/DamageEvents.h"
 #include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 void UBLAutoTestComponent::BuildMission2Test()
@@ -229,25 +231,70 @@ void UBLAutoTestComponent::BuildMission2Test()
 	};
 	Quay.Done = [Director]() { return Director() && Director()->GetCurrentIndex() >= 8; };
 	Steps.Add(Quay);
-	FStep Board{ TEXT("Lancha"), 20.0f, nullptr,
-		[this](float T)
+	// Subir como un jugador: desde el borde del embarcadero, mirando al punto de subida y manteniendo F
+	// (la detección real: alcance, ángulo y línea de vista; antes la prueba llamaba a Use() y no veía el bloqueo)
+	auto BoardPoint = [this]() -> ABLInteractable*
+	{
+		for (TActorIterator<ABLInteractable> It(GetWorld()); It; ++It)
 		{
-			for (TActorIterator<ABLInteractable> It(GetWorld()); It && T > 1.f; ++It)
+			if (It->Tags.Contains(FName("BLObjective_Boat"))) { return *It; }
+		}
+		return nullptr;
+	};
+	FStep Board{ TEXT("Lancha"), 12.0f,
+		[Place]() { Place(FVector(22460.f, 120.f, 0.f), 90.f, -40.f); },
+		[this, BoardPoint](float T)
+		{
+			ABLInteractable* I = BoardPoint();
+			if (!I || Char()->IsDrivingBoat())
 			{
-				if (It->Tags.Contains(FName("BLObjective_Boat")) && It->CanInteract(Char()))
-				{
-					It->Use(Char());
-				}
+				Char()->SetInteractHeld(false);
+				return;
 			}
+			const FVector Eye = Char()->GetCamera()->GetComponentLocation();
+			Char()->GetController()->SetControlRotation((I->GetInteractLocation() - Eye).Rotation());
+			if (T > 0.5f && !Char()->GetFocusedInteractable()) { return; }
+			Char()->SetInteractHeld(T > 0.5f);
 		},
-		[Director](FString& D)
+		[this, Director, BoardPoint](FString& D)
 		{
 			const ABLMissionDirector* M = Director();
-			D = FString::Printf(TEXT("objetivos pendientes=%d"), M && M->GetCurrentObjective() ? 1 : 0);
+			const ABLInteractable* I = BoardPoint();
+			const float Dist = I ? FVector::Dist(I->GetInteractLocation(), Char()->GetCamera()->GetComponentLocation()) : -1.f;
+			D = FString::Printf(TEXT("punto de subida a %.0f cm de la cámara (alcance 210), objetivo %d, pilotando=%d"),
+				Dist, M ? M->GetCurrentIndex() + 1 : 0, Char()->IsDrivingBoat());
+			return M && M->GetCurrentIndex() == 9 && Char()->IsDrivingBoat();
+		} };
+	Board.Done = [this]() { return Char()->IsDrivingBoat(); };
+	Steps.Add(Board);
+
+	// Pilotar hasta la bocana con la entrada real (W/S, A/D -> DoMove)
+	TSharedRef<FVector2D> DriveStats = MakeShared<FVector2D>(0.f, 0.f);   // velocidad máxima, segundos
+	FStep Drive{ TEXT("Pilotar"), 60.0f, nullptr,
+		[this, Boat, DriveStats](float T)
+		{
+			ABLBoat* B = Boat();
+			TArray<AActor*> Exit;
+			UGameplayStatics::GetAllActorsWithTag(GetWorld(), FName("BLObj_Salida"), Exit);
+			if (!B || Exit.Num() == 0 || !Char()->IsDrivingBoat())
+			{
+				return;
+			}
+			const float Want = (Exit[0]->GetActorLocation() - B->GetActorLocation()).Rotation().Yaw;
+			const float Diff = FRotator::NormalizeAxis(Want - B->GetActorRotation().Yaw);
+			const float Steer = FMath::Clamp(Diff / 25.f, -1.f, 1.f);
+			Char()->DoMove(Steer, FMath::Abs(Diff) > 100.f ? 0.4f : 1.f);
+			DriveStats->X = FMath::Max(DriveStats->X, B->GetCurrentSpeed());
+			DriveStats->Y = T;
+		},
+		[Director, DriveStats](FString& D)
+		{
+			const ABLMissionDirector* M = Director();
+			D = FString::Printf(TEXT("bocana alcanzada=%d en %.1f s, velocidad máxima %.0f km/h"), M && !M->GetCurrentObjective(), DriveStats->Y, DriveStats->X * 0.036f);
 			return M && !M->GetCurrentObjective();
 		} };
-	Board.Done = [Director]() { return Director() && !Director()->GetCurrentObjective(); };
-	Steps.Add(Board);
+	Drive.Done = [Director]() { return Director() && !Director()->GetCurrentObjective(); };
+	Steps.Add(Drive);
 
 	FStep Done{ TEXT("Completada"), 40.0f, nullptr, nullptr,
 		[Director](FString& D)

@@ -32,7 +32,7 @@ def tint(name, dest, color, rough, metal):
 HELI = "/Game/Vehicles/Heli"
 mats = {"MI_BTR_Paint": tint("MI_BTR_Paint", DEST, (0.09, 0.1, 0.065), 0.7, 0.25),
         "MI_Heli_Paint": tint("MI_Heli_Paint", HELI, (0.055, 0.06, 0.058), 0.55, 0.3),
-        "MI_Heli_Interior": tint("MI_Heli_Interior", HELI, (0.025, 0.025, 0.024), 0.85, 0.0)}
+        "MI_Heli_Interior": tint("MI_Heli_Interior", HELI, (0.075, 0.082, 0.068), 0.85, 0.0)}
 paint = mats["MI_BTR_Paint"]
 OWN = set(mats)
 for n in ("MI_Veh_Rubber", "MI_Veh_Trim", "MI_Veh_GlassOpaque"):

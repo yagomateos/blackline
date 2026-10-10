@@ -15,7 +15,7 @@
 
 bool ABLCharacter::CanSwitchWeapon() const
 {
-	return Weapon && !bDead && !IsMounted() && GrenadeTimer < 0.f && Weapon->GetWeaponCount() > 1;
+	return Weapon && !bDead && !IsInVehicleOrMount() && GrenadeTimer < 0.f && Weapon->GetWeaponCount() > 1;
 }
 
 void ABLCharacter::SwitchWeapon(int32 Index)

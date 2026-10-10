@@ -40,6 +40,10 @@ public:
 	static float PlayerDamageTaken(int32 Level);
 	static const TCHAR* DifficultyName(int32 Level);
 
+	// ---- Equipamiento (pantalla EQUIPAMIENTO antes de cada misión) ----
+	UPROPERTY(config) FString LoadoutPrimary = TEXT("AR7");
+	UPROPERTY(config) FString LoadoutSecondary = TEXT("P17");
+
 	// ---- Audio (0..1) ----
 	UPROPERTY(config) float MasterVolume = 1.f;
 	UPROPERTY(config) float MusicVolume = 0.8f;

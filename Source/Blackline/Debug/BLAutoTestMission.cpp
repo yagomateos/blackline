@@ -254,25 +254,58 @@ void UBLAutoTestComponent::BuildMissionTest()
 	};
 	DefendLZ.Done = [Director]() { return Director() && Director()->GetCurrentIndex() >= 13; };
 	Steps.Add(DefendLZ);
+	// Subir como un jugador: junto a la puerta izquierda, mirando al hueco y manteniendo F (detección real: alcance,
+	// ángulo y línea de vista; antes la prueba llamaba a Use() y no veía que la cabina maciza impedía subir)
+	TSharedRef<bool> Placed = MakeShared<bool>(false);
+	TSharedRef<float> PlacedAt = MakeShared<float>(-1.f);
+	TSharedRef<bool> DoorShot = MakeShared<bool>(false);
 	FStep Board{ TEXT("Helicoptero"), 40.0f,
-		[Place]() { Place(FVector(24300.f, 300.f, 0.f), 55.f, 4.f); },
-		[this, Heli](float T)
+		[Place, Placed]() { *Placed = false; Place(FVector(24300.f, 300.f, 0.f), 55.f, 4.f); },
+		[this, Heli, Placed, PlacedAt, DoorShot](float T)
 		{
-			const ABLHelicopter* H = Heli();
-			for (TActorIterator<ABLInteractable> It(GetWorld()); It && H && H->IsLanded() && T > 2.f; ++It)
+			ABLHelicopter* H = Heli();
+			if (H && Char()->IsInVehicleSeat())
 			{
-				if (It->Tags.Contains(FName("BLObjective_Heli")) && It->CanInteract(Char()))
+				Char()->SetInteractHeld(false);
+				if (!bScreenshotTaken) { bScreenshotTaken = true; Screenshot(TEXT("HeliDentro")); }
+				return;
+			}
+			if (!H || !H->IsLanded())
+			{
+				Char()->SetInteractHeld(false);
+				return;
+			}
+			ABLCharacter* C = Char();
+			if (!*Placed)
+			{
+				*Placed = true;
+				*PlacedAt = -1.f;
+				const FVector Door = H->GetActorTransform().TransformPosition(FVector(25.f, -185.f, 0.f));
+				C->GetCharacterMovement()->StopMovementImmediately();
+				C->SetActorLocation(Door + FVector(0.f, 0.f, C->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 5.f), false, nullptr, ETeleportType::TeleportPhysics);
+			}
+			for (TActorIterator<ABLInteractable> It(GetWorld()); It; ++It)
+			{
+				if (It->Tags.Contains(FName("BLObjective_Heli")))
 				{
-					It->Use(Char());
+					C->GetController()->SetControlRotation((It->GetInteractLocation() - C->GetCamera()->GetComponentLocation()).Rotation());
 				}
 			}
+			// Primero una captura de la puerta abierta (sin pulsar), luego mantener F
+			if (*PlacedAt < 0.f) { *PlacedAt = T; }
+			if (T - *PlacedAt < 1.2f)
+			{
+				if (T - *PlacedAt > 1.0f && !*DoorShot) { *DoorShot = true; Screenshot(TEXT("HeliPuerta")); }
+				return;
+			}
+			C->SetInteractHeld(C->GetFocusedInteractable() != nullptr);
 		},
-		[Director, Heli](FString& D)
+		[this, Director, Heli](FString& D)
 		{
 			const ABLMissionDirector* M = Director();
 			const ABLHelicopter* H = Heli();
-			D = FString::Printf(TEXT("en tierra=%d, objetivos pendientes=%d"), H && H->IsLanded(), M && M->GetCurrentObjective() ? 1 : 0);
-			return H && H->IsLanded() && M && !M->GetCurrentObjective();
+			D = FString::Printf(TEXT("en tierra=%d, dentro de la cabina=%d, objetivos pendientes=%d"), H && H->IsLanded(), Char()->IsInVehicleSeat(), M && M->GetCurrentObjective() ? 1 : 0);
+			return H && H->IsLanded() && Char()->IsInVehicleSeat() && M && !M->GetCurrentObjective();
 		}, nullptr, -1.f };
 	Board.Done = [Director]() { return Director() && !Director()->GetCurrentObjective(); };
 	Steps.Add(Board);

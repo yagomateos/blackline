@@ -130,12 +130,13 @@ void UBLAutoTestComponent::BuildCombatTest()
 		return FMath::IsNearlyEqual(Lost, Damage, 0.5f) && St->MaxReaction > 0.5f && St->HitMarkerAge < 1.5f && LastSurface == int32(BLSurface::Flesh);
 	}, 0.62f);
 
-	ShotStep(TEXT("Cabeza"), 1, EBLHitZone::Head, [St, Damage, W](FString& D, ABLTargetDummy* Dummy)
+	// Un tiro del jugador a la cabeza mata (bHeadshotKills), aunque el daño del arma x2,5 no llegue a la vida que queda
+	ShotStep(TEXT("Cabeza"), 2, EBLHitZone::Head, [St, Damage, W](FString& D, ABLTargetDummy* Dummy)
 	{
 		const float Lost = St->HealthBefore - Dummy->GetHealth()->GetHealth();
-		const float Expected = Damage * W->GetWeaponData()->HeadshotMultiplier;
-		D = FString::Printf(TEXT("dano %.1f (esperado %.1f)"), Lost, Expected);
-		return FMath::IsNearlyEqual(Lost, Expected, 0.5f);
+		D = FString::Printf(TEXT("dano %.1f de %.1f que le quedaban (el arma hace %.1f a la cabeza), muerto=%d"), Lost, St->HealthBefore,
+			Damage * W->GetWeaponData()->HeadshotMultiplier, Dummy->GetHealth()->IsDead());
+		return Dummy->GetHealth()->IsDead() && FMath::IsNearlyEqual(Lost, St->HealthBefore, 0.5f);
 	});
 
 	ShotStep(TEXT("Pierna"), 3, EBLHitZone::Limb, [St, Damage, W](FString& D, ABLTargetDummy* Dummy)

@@ -19,7 +19,7 @@ public:
 		SLATE_ARGUMENT(TWeakObjectPtr<ABLMenuPlayerController>, Owner)
 	SLATE_END_ARGS()
 
-	enum class EPage : int32 { Main, Missions, Loadout, Intel, Options, Quit };
+	enum class EPage : int32 { Main, Missions, Loadout, Intel, Options, Quit, Equip };
 
 	void Construct(const FArguments& InArgs);
 	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
@@ -32,6 +32,11 @@ public:
 	void SetSelectedIntel(int32 Index) { SelectedIntel = Index; }
 	void SetSelectedWeapon(int32 Index) { SelectedWeapon = Index; }
 	int32 GetStartPhase() const { return StartPhase; }
+	/** Pantalla de equipamiento previa a una misión (JUGAR/CONTINUAR o DESPLEGAR). */
+	void OpenEquip(int32 Mission, int32 Phase);
+	int32 GetEquipPrimary() const { return EquipPrimary; }
+	void SetEquipPrimary(int32 Index);
+	void ConfirmEquipAndDeploy();
 
 private:
 	TSharedRef<SWidget> MainPage();
@@ -40,6 +45,7 @@ private:
 	TSharedRef<SWidget> IntelPage();
 	TSharedRef<SWidget> OptionsPage();
 	TSharedRef<SWidget> QuitPage();
+	TSharedRef<SWidget> EquipPage();
 	TSharedRef<SWidget> Header(const FText& Title, const FText& Sub);
 	void Back();
 
@@ -52,4 +58,8 @@ private:
 	int32 SelectedWeapon = 0;
 	int32 SelectedIntel = 0;
 	int32 StartPhase = 0;
+	int32 EquipMission = 0;
+	int32 EquipPhase = 0;
+	int32 EquipPrimary = 0;
+	EPage EquipFrom = EPage::Main;
 };

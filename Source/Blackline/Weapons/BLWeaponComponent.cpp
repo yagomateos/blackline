@@ -696,7 +696,16 @@ void UBLWeaponComponent::FireShot()
 					Entry->Zone = Zone;  // el hitmarker enseña la mejor zona
 				}
 			}
-			UGameplayStatics::ApplyPointDamage(Hit.GetActor(), ComputeDamage(Hit, Hit.Distance), Dir, Hit,
+			float Amount = ComputeDamage(Hit, Hit.Distance);
+			// Tiro del jugador a la cabeza de un enemigo con un arma de una sola bala: letal (sea cual sea el blindaje del
+			// cuerpo o la distancia). Aquí se sabe el blanco; ComputeDamage solo conoce el arma
+			const APawn* Victim = Cast<APawn>(Hit.GetActor());
+			if (TargetHealth && !TargetHealth->IsDead() && Data->bHeadshotKills && Pellets == 1 && ShooterPawn && ShooterPawn->IsPlayerControlled()
+				&& Victim && !Victim->IsPlayerControlled() && BLDamage::ZoneFromBone(Hit.BoneName) == EBLHitZone::Head)
+			{
+				Amount = FMath::Max(Amount, TargetHealth->GetHealth() / FMath::Max(TargetHealth->DamageTakenMultiplier, 0.01f) + 1.f);
+			}
+			UGameplayStatics::ApplyPointDamage(Hit.GetActor(), Amount, Dir, Hit,
 				ShooterPawn ? ShooterPawn->GetController() : nullptr, GetOwner(), UDamageType::StaticClass());
 		}
 		if (FX && Hit.bBlockingHit)
