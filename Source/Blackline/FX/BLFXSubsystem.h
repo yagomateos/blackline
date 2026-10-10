@@ -33,6 +33,8 @@ public:
 
 	/** Impacto completo (partículas, escombros, decal y sonido). ShotDir = dirección de la bala. */
 	void SpawnImpact(const FBLSurfaceEffect& Effect, const FHitResult& Hit, const FVector& ShotDir);
+	/** Explosión (granada, Bloque 11): bola de polvo/humo, chorros de tierra, chispas, cascotes y marca de quemado. */
+	void SpawnExplosion(const FVector& Location, const FVector& GroundNormal, const FBLSurfaceEffect* Surface);
 
 	UBLDebrisPoolComponent* GetDebrisPool() const { return Debris; }
 
@@ -42,7 +44,7 @@ public:
 	/** Marcas y salpicaduras vivas. */
 	int32 GetActiveDecals() const { return Decals.FilterByPredicate([](const TWeakObjectPtr<UDecalComponent>& D) { return D.IsValid(); }).Num(); }
 
-	static constexpr int32 MaxSprites = 160;
+	static constexpr int32 MaxSprites = 220;
 	static constexpr int32 MaxSparks = 128;
 	static constexpr int32 MaxDecals = 80;
 	static constexpr float DecalLifetime = 40.f;

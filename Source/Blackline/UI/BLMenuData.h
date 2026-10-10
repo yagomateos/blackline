@@ -5,7 +5,9 @@
 /** Textos del menú (Bloque 10). Fuente: Docs/Lore.md. */
 namespace BLMenuData
 {
-	struct FMission { const TCHAR* Code; const TCHAR* Name; const TCHAR* Place; bool bAvailable; const TCHAR* Briefing; };
+	/** Map: nivel; FirstPhase/NumPhases: sus puntos de inicio dentro de StartPhases / StartPhaseIds. */
+	struct FMission { const TCHAR* Code; const TCHAR* Name; const TCHAR* Place; bool bAvailable; const TCHAR* Briefing;
+		const TCHAR* Map = nullptr; int32 FirstPhase = 0; int32 NumPhases = 0; };
 	struct FWeapon { const TCHAR* Name; const TCHAR* Class; const TCHAR* Specs; const TCHAR* Text; bool bAvailable; float Stats[5]; };
 	struct FIntel { const TCHAR* Title; const TCHAR* Body; };
 
@@ -14,19 +16,52 @@ namespace BLMenuData
 			TEXT("Tomas Varek, nuestro informante en el puerto, no responde desde las 04:00. Su refugio está al final de la calle "
 				 "principal, al otro lado del patio de contenedores. Entra por los callejones del norte, cruza el patio, pasa el control "
 				 "de carretera de la Columna y recupera su disco duro. Patrullas por parejas, posiciones con sacos terreros, sin apoyo aéreo. "
-				 "Evita el ruido mientras puedas.") },
-		{ TEXT("02"), TEXT("MANIFIESTO"), TEXT("REFINERÍA DE KESSRA · NOCHE"), false,
-			TEXT("El disco de Varek apunta a un almacén de la refinería. Infiltración nocturna para fotografiar el contenido de los contenedores.") },
-		{ TEXT("03"), TEXT("RÍA"), TEXT("CASCO VIEJO · AMANECER"), false,
-			TEXT("Varek sigue vivo, retenido en el casco viejo junto a la ría. Rescate casa por casa. Primeros indicios de operadores de Corvane.") },
-		{ TEXT("04"), TEXT("FUEGO CRUZADO"), TEXT("PUENTE DEL FERROCARRIL · DÍA"), false,
-			TEXT("La Columna intenta cruzar la línea negra. Defensa del puente con el ejército de Varania mientras TORRE saca las pruebas del país.") },
-		{ TEXT("05"), TEXT("LÍNEA NEGRA"), TEXT("PUERTO DE KESSRA · AMANECER"), false,
-			TEXT("Asalto final al puerto para capturar a \"el inglés\" y los registros de Corvane antes de que lo destruyan todo.") },
+				 "Evita el ruido mientras puedas."), TEXT("/Game/Maps/M01/L_M01_AmanecerRoto"), 0, 8 },
+		{ TEXT("02"), TEXT("MANIFIESTO"), TEXT("REFINERÍA DE KESSRA · ALMACÉN 7 · 03:40"), true,
+			TEXT("Los manifiestos del disco de Varek señalan cuatro contenedores descargados en el almacén 7 de la refinería: \"pesa demasiado\", "
+				 "\"esto no es grano\". Entra solo, en lancha por el canal de refrigeración, fotografía los contenedores KSR 4471, 4472 y 0918 "
+				 "y sal sin que nadie sepa que has estado allí. De noche la oscuridad es tu cobertura: evita las linternas y los focos."),
+			TEXT("/Game/Maps/M02/L_M02_Manifiesto"), 8, 5 },
+		{ TEXT("03"), TEXT("RÍA"), TEXT("CASCO VIEJO · MUELLES DE LA RÍA · 07:20"), true,
+			TEXT("Al fondo de las fotos del almacén 7 aparece un mercante gris sin nombre ni bandera: el \"barco sin bandera\" de las notas de Varek. "
+				 "El práctico del puerto viejo, que lo guía de noche, guarda un cuaderno con sus entradas y salidas. Cruza el puente viejo con la niebla, "
+				 "consigue el cuaderno en las casas de la ribera y coloca una baliza en el casco antes de que zarpe. Cargas de brecha para las puertas atrancadas. "
+				 "Se han visto operadores de Corvane en los muelles."),
+			TEXT("/Game/Maps/M03/L_M03_Ria"), 13, 6 },
+		{ TEXT("04"), TEXT("FUEGO CRUZADO"), TEXT("PUENTE DEL FERROCARRIL · 16:40"), true,
+			TEXT("La Columna lanza su ofensiva para cruzar la línea negra por el puente del ferrocarril, el único paso sobre el río que sigue en pie. "
+				 "En el puesto del ejército está el enlace por satélite con el que TORRE va a sacar las pruebas del país. Aguanta con la compañía del "
+				 "teniente Ilić mientras sube la transmisión: ametralladora en el búnker, apoyo aéreo a petición y cargas para volar el primer tramo "
+				 "si no queda otra."),
+			TEXT("/Game/Maps/M04/L_M04_FuegoCruzado"), 19, 6 },
+		{ TEXT("05"), TEXT("LÍNEA NEGRA"), TEXT("TERMINAL DE CONTENEDORES · CAPITANÍA · 06:30"), true,
+			TEXT("Con las pruebas fuera del país, la coalición autoriza por fin a BLACKLINE. Corvane recoge en la capitanía del puerto y quema "
+				 "lo que no puede llevarse. Entra en la terminal con Sable 2-2 y 2-3, llega a la sala de servidores antes de que la quemen, descarga "
+				 "los registros y atrapa a \"el inglés\". Vivo."),
+			TEXT("/Game/Maps/M05/L_M05_LineaNegra"), 25, 5 },
 	};
 
-	inline const TCHAR* StartPhases[] = { TEXT("INSERCIÓN"), TEXT("PATIO DEL PUERTO"), TEXT("CONTROL DE CARRETERA"), TEXT("CALLE PRINCIPAL"), TEXT("LOCAL DE VAREK") };
-	inline const TCHAR* StartPhaseIds[] = { TEXT("Fase1"), TEXT("Fase2"), TEXT("Fase3"), TEXT("Fase4"), TEXT("Objetivo") };
+	inline const TCHAR* StartPhases[] = {
+		// Misión 1 (0..7)
+		TEXT("INSERCIÓN"), TEXT("PATIO DEL PUERTO"), TEXT("CONTROL DE CARRETERA"), TEXT("CALLE PRINCIPAL"), TEXT("LOCAL DE VAREK"),
+		TEXT("BLOQUE DE VIVIENDAS"), TEXT("AZOTEA · BLINDADO"), TEXT("MUELLE · EXTRACCIÓN"),
+		// Misión 2 (8..12)
+		TEXT("CANAL · INSERCIÓN"), TEXT("PARQUE DE TANQUES"), TEXT("PATIO DE CARGA"), TEXT("ALMACÉN 7"), TEXT("ZONA DE PROCESO · HUIDA"),
+		// Misión 3 (13..18)
+		TEXT("PUENTE VIEJO · INSERCIÓN"), TEXT("CASCO VIEJO"), TEXT("CASAS DE LA RIBERA"), TEXT("PLAZA DEL CAMPANARIO"),
+		TEXT("MUELLE DE PESCADORES"), TEXT("ESPIGÓN · BALIZA"),
+		// Misión 4 (19..24)
+		TEXT("RETAGUARDIA · CAMIONES"), TEXT("CABEZA DE PUENTE"), TEXT("BÚNKER · AMETRALLADORA"), TEXT("OBSERVATORIO · BLINDADO"),
+		TEXT("CARGAS EN EL PUENTE"), TEXT("VADO · RETIRADA"),
+		// Misión 5 (25..29)
+		TEXT("ENTRADA DE LA TERMINAL"), TEXT("TERMINAL DE CONTENEDORES"), TEXT("CAPITANÍA · CONTRARRELOJ"), TEXT("SALA DE SERVIDORES"),
+		TEXT("AZOTEA · EL INGLÉS") };
+	inline const TCHAR* StartPhaseIds[] = {
+		TEXT("Fase1"), TEXT("Fase2"), TEXT("Fase3"), TEXT("Fase4"), TEXT("Objetivo"), TEXT("Bloque"), TEXT("Azotea"), TEXT("Muelle"),
+		TEXT("Canal"), TEXT("Tanques"), TEXT("Carga"), TEXT("Almacen"), TEXT("Proceso"),
+		TEXT("Puente"), TEXT("Casco"), TEXT("Casas"), TEXT("Campanario"), TEXT("Muelle"), TEXT("Baliza"),
+		TEXT("Inicio"), TEXT("Puesto"), TEXT("Ametralladora"), TEXT("Blindado"), TEXT("Voladura"), TEXT("Retirada"),
+		TEXT("Inicio"), TEXT("Terminal"), TEXT("Capitania"), TEXT("Servidores"), TEXT("Azotea") };
 
 	// Estadísticas 0..1: daño, cadencia, alcance, control, movilidad
 	inline const FWeapon Weapons[] = {
@@ -60,6 +95,13 @@ namespace BLMenuData
 		{ TEXT("TOMAS VAREK"), TEXT("Exempleado de logística del puerto. Llevaba los manifiestos de carga del lado este y lleva meses pasando a BLACKLINE fotos de cajas "
 			"sin marcas y números de contenedor. Dejaba notas a lápiz en los márgenes: \"esto no es grano\", \"pesa demasiado\", \"otra vez el barco sin bandera\". "
 			"Dice tener algo grande guardado en un disco duro.") },
+		{ TEXT("OPERADORES DE CORVANE"), TEXT("Contratistas con equipo de gama alta sin marcas: placas, cascos con visor, radios cifradas. No gritan ni se "
+			"avisan a voces como la Columna: se les reconoce por el silencio, por la puntería y por las granadas que usan para sacarte de la cobertura. "
+			"Sus tiradores llevan láser.") },
+		{ TEXT("EL BARCO SIN BANDERA"), TEXT("Un mercante gris, sin nombre ni bandera, que fondea en la ría del casco viejo cuando hay niebla. Aparece una y otra vez "
+			"en las notas de Varek: \"otra vez el barco sin bandera\". El práctico del puerto viejo lo guía de noche.") },
+		{ TEXT("TTE. ILIĆ"), TEXT("Oficial del ejército de Varania. Su compañía defiende el puente del ferrocarril, el único paso sobre el río que la línea negra "
+			"no ha cortado. Desconfía de los \"asesores\".") },
 		{ TEXT("TORRE"), TEXT("Puesto de mando de BLACKLINE en Kessra. La voz es la del Capitán Elias Marot, oficial de inteligencia: directo, sin adornos, "
 			"siempre un paso por detrás de lo que de verdad está pasando y consciente de ello. Nunca dice nombres reales por radio.") },
 	};

@@ -31,3 +31,6 @@ ArtSource/Blender/export/
 # Python
 __pycache__/
 *.pyc
+
+# Vídeos promocionales (pesados; se generan con Tools/trailer)
+Docs/video/

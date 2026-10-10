@@ -46,6 +46,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Building") int32 FaceMask = 15;
 	/** Caras que dan a una calle (más locales y portales en la planta baja). */
 	UPROPERTY(EditAnywhere, Category = "Building") int32 StreetMask = 15;
+	/** Caras con peto de cubierta (las que no lo llevan dejan la azotea abierta: pasarelas, escaleras de incendios). */
+	UPROPERTY(EditAnywhere, Category = "Building") int32 CorniceMask = 15;
 	UPROPERTY(EditAnywhere, Category = "Building") float FloorHeight = 320.f;
 	/** Todas las plantas son de pisos (para edificios montados encima de una planta baja hecha aparte). */
 	UPROPERTY(EditAnywhere, Category = "Building") bool bNoGroundFloor = false;

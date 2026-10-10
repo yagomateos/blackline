@@ -175,16 +175,16 @@ def finish_buildings():
     log(f"Edificios: {len(BUILDINGS)}, instancias de fachada: {count}")
 
 
-def start_point(name, x, y, yaw=0.0):
-    tp = actors.spawn_actor_from_class(unreal.TargetPoint, unreal.Vector(x, y, 0), unreal.Rotator(roll=0, pitch=0, yaw=yaw))
+def start_point(name, x, y, yaw=0.0, z=0.0):
+    tp = actors.spawn_actor_from_class(unreal.TargetPoint, unreal.Vector(x, y, z), unreal.Rotator(roll=0, pitch=0, yaw=yaw))
     tp.set_actor_label(f"BLTest_Start_{name}")
     tp.tags = [unreal.Name(f"BLTest_Start_{name}")]
     return tp
 
 
-def checkpoint(cid, x0, x1, y0, y1, yaw):
+def checkpoint(cid, x0, x1, y0, y1, yaw, z=0.0):
     """Volumen de checkpoint que cubre todo el paso (x0..x1, y0..y1); se reaparece en su centro mirando a yaw."""
-    cp = actors.spawn_actor_from_class(unreal.BLCheckpointVolume, unreal.Vector((x0 + x1) / 2, (y0 + y1) / 2, 120))
+    cp = actors.spawn_actor_from_class(unreal.BLCheckpointVolume, unreal.Vector((x0 + x1) / 2, (y0 + y1) / 2, 120 + z))
     cp.set_actor_label(f"Checkpoint_{cid}")
     cp.set_editor_property("checkpoint_id", cid)
     cp.set_actor_scale3d(unreal.Vector((x1 - x0) / 300, (y1 - y0) / 300, 1))   # caja base de 300 x 300 x 240
@@ -330,7 +330,7 @@ def phase4_street():
     # Manzana sur con callejones E (13500..14000) y F (16500..17000) unidos por un pasaje trasero
     building("C1", 10400, 13500, 1300, 2900, 1120)
     building("C2", 14000, 16500, 1300, 2900, 1280)
-    building("C3", 17000, 19500, 1300, 2900, 960)
+    apartment_block()   # C3: bloque de viviendas con interiores (Bloque 11, fases 5-6)
     box("Callejon_E", 13500, 14000, 1300, 3900, -2, 0, M_FLOOR)
     box("Callejon_F", 16500, 17000, 1300, 3900, -2, 0, M_FLOOR)
     box("Pasaje_Sur", 13500, 17000, 2900, 3900, -2, 0, M_DIRT)
@@ -405,8 +405,375 @@ def objective():
     checkpoint("Objetivo", 19530, 20970, -70, 1270, 0)
 
 
-def enemy(label, squad, x, y, yaw, patrol=()):
-    e = actors.spawn_actor_from_class(unreal.BLEnemyCharacter, unreal.Vector(x, y, 96), unreal.Rotator(roll=0, pitch=0, yaw=yaw))
+# ---------------------------------------------------------------------------
+# Bloque de viviendas (Bloque 11, fases 5-6): manzana C3 con interiores
+# ---------------------------------------------------------------------------
+BX0, BX1, BY0, BY1 = 17000, 19500, 1300, 2900
+CX0, CX1 = 17770, 18630      # tramo de fachada norte que derriba el blindado (fase 8)
+FH = 320.0
+WT = 25.0
+
+
+def wall_x(name, y0, y1, xa, xb, z0, z1, holes, m):
+    """Muro a lo largo de X (grosor y0..y1) con huecos [(x0, x1, zb, zt)] (ventanas y puertas)."""
+    holes = sorted(holes)
+    x = xa
+    for i, (h0, h1, hb, ht) in enumerate(holes):
+        if h0 > x:
+            box(f"{name}_S{i}", x, h0, y0, y1, z0, z1, m)
+        if hb > z0:
+            box(f"{name}_B{i}", h0, h1, y0, y1, z0, hb, m)
+        if ht < z1:
+            box(f"{name}_T{i}", h0, h1, y0, y1, ht, z1, m)
+        x = h1
+    if x < xb:
+        box(f"{name}_End", x, xb, y0, y1, z0, z1, m)
+
+
+def wall_y(name, x0, x1, ya, yb, z0, z1, holes, m):
+    """Muro a lo largo de Y (grosor x0..x1) con huecos [(y0, y1, zb, zt)]."""
+    holes = sorted(holes)
+    y = ya
+    for i, (h0, h1, hb, ht) in enumerate(holes):
+        if h0 > y:
+            box(f"{name}_S{i}", x0, x1, y, h0, z0, z1, m)
+        if hb > z0:
+            box(f"{name}_B{i}", x0, x1, h0, h1, z0, hb, m)
+        if ht < z1:
+            box(f"{name}_T{i}", x0, x1, h0, h1, ht, z1, m)
+        y = h1
+    if y < yb:
+        box(f"{name}_End", x0, x1, y, yb, z0, z1, m)
+
+
+def win(c, z, w=140.0):
+    return (c - w / 2, c + w / 2, z + 90.0, z + 240.0)
+
+
+def door(c, z, w=150.0):
+    """Puerta de 150 cm: con 110 el NavMesh (radio del agente 34 + rasterizado de los muros) la daba por cerrada."""
+    return (c - w / 2, c + w / 2, z, z + 230.0)
+
+
+def stair_flight(name, xa, xb, y_start, direction, z_base, steps=9, rise=160.0 / 9, run=28.0, m=None):
+    """Tramo de escalera: escalones de huella 28 y contrahuella ~17,8, losa fina (se pasa por debajo)."""
+    for i in range(steps):
+        ya = y_start + direction * run * i
+        yb = ya + direction * run
+        top = z_base + rise * (i + 1)
+        box(f"{name}_{i}", xa, xb, min(ya, yb), max(ya, yb), top - 40.0, top, m or M_FLOOR)
+
+
+def furniture(prefix, x, y, z, kind, yaw_x=True):
+    """Muebles sencillos (cajas) que sirven de cobertura baja dentro de los pisos."""
+    if kind == "mesa":
+        box(f"{prefix}_Mesa", x - 60, x + 60, y - 40, y + 40, z, z + 75, M_WOOD)
+        covers_for_box(x - 60, x + 60, y - 40, y + 40, True)
+    elif kind == "sofa":
+        box(f"{prefix}_Sofa", x - 100, x + 100, y - 40, y + 40, z, z + 80, M_DIRT)
+        covers_for_box(x - 100, x + 100, y - 40, y + 40, True)
+    elif kind == "cama":
+        box(f"{prefix}_Cama", x - 75, x + 75, y - 100, y + 100, z, z + 50, M_PLASTER)
+    elif kind == "armario":
+        box(f"{prefix}_Armario", x - 50, x + 50, y - 30, y + 30, z, z + 200, M_WOOD)
+    elif kind == "barricada":   # muebles volcados en el pasillo: cobertura baja
+        box(f"{prefix}_Barricada", x - 70, x + 70, y - 40, y + 40, z, z + 110, M_WOOD, yaw=rng.uniform(-15, 15))
+        covers_for_box(x - 70, x + 70, y - 40, y + 40, True)
+
+
+def interior_light(name, x, y, z, warm=True, intensity=30.0, radius=700.0):
+    """Luz interior sin sombras (barata): bombilla cálida en los pisos, fluorescente frío en zonas comunes."""
+    l = actors.spawn_actor_from_class(unreal.PointLight, unreal.Vector(x, y, z))
+    l.set_actor_label(name)
+    c = l.get_component_by_class(unreal.PointLightComponent)
+    c.set_mobility(unreal.ComponentMobility.MOVABLE)
+    c.set_editor_property("intensity_units", unreal.LightUnits.CANDELAS)
+    c.set_intensity(intensity)
+    c.set_light_color(unreal.LinearColor(1.0, 0.72, 0.45, 1) if warm else unreal.LinearColor(0.82, 0.92, 1.0, 1))
+    c.set_attenuation_radius(radius)
+    c.set_cast_shadows(False)
+    c.set_editor_property("source_radius", 4.0)
+    # Solo cuestan de cerca: con 21 luces encendidas en todo el nivel la misión perdía ~4 ms
+    c.set_editor_property("max_draw_distance", 2500.0)
+    c.set_editor_property("max_distance_fade_range", 500.0)
+    return l
+
+
+def apartment_block():
+    """Bloque C3 (x 170-195 m, y 13-29 m): portal a la calle principal, escalera de ida y vuelta al este,
+    pasillo central y 4 pisos por planta (2 al norte, 2 al sur), 3 plantas + azotea con caseta de escalera.
+    Ventanas abiertas (se dispara por ellas). Muros de 25 cm; enfoscado salmón por fuera y por dentro."""
+    covers_for_building(BX0, BX1, BY0, BY1)
+    W = mat("MI_Fac_Wall_Salmon")
+    IN = M_PLASTER
+    x0, x1, y0, y1 = BX0, BX1, BY0, BY1
+    SX0, SX1, SY0, SY1 = 18950, x1 - WT, y0 + WT, 1900       # hueco de la escalera
+    for k in range(3):
+        z = k * FH
+        zt = z + FH
+        # ---- Fachadas ----
+        north = [win(c, z) for c in ((17300, 17700, 18200, 18700) if k else (17700, 18700))] + [win(19200, z, 100)]
+        if k == 0:
+            north.append(door(18410, z, 180))
+        wall_x(f"Bloque_N{k}", y0, y0 + WT, x0, x1, z, zt, north, W)
+        wall_x(f"Bloque_S{k}", y1 - WT, y1, x0, x1, z, zt, [win(c, z) for c in (17300, 17800, 18500, 19000, 19300)], W)
+        wall_y(f"Bloque_O{k}", x0, x0 + WT, y0 + WT, y1 - WT, z, zt, [win(1600, z), win(2500, z)], W)
+        wall_y(f"Bloque_E{k}", x1 - WT, x1, y0 + WT, y1 - WT, z, zt, [win(1600, z, 100), win(2500, z)], W)
+        # ---- Pasillo: muros norte (y 1925) y sur (y 2100) con las puertas de los pisos ----
+        if k == 0:
+            # Planta baja: el norte es el portal (abierto al pasillo); solo el piso A tiene muro
+            wall_x(f"Bloque_PN{k}", 1925, 1950, x0 + WT, 17975, z, zt, [door(17760, z)], IN)
+        else:
+            wall_x(f"Bloque_PN{k}", 1925, 1950, x0 + WT, SX0 - WT, z, zt, [door(17760, z), door(18450, z)], IN)
+        # (las puertas no pueden caer sobre un tabique: C entra por su habitación este y D por la oeste)
+        wall_x(f"Bloque_PS{k}", 2100, 2125, x0 + WT, x1 - WT, z, zt, [door(17950, z), door(18560, z)], IN)
+        # Separación entre pisos y tabiques interiores (con su puerta)
+        wall_y(f"Bloque_AB{k}", 17975, 18000, y0 + WT, 1925, z, zt, [] if k else [door(1600, z)], IN)
+        wall_y(f"Bloque_CD{k}", 18250, 18275, 2125, y1 - WT, z, zt, [], IN)
+        wall_y(f"Bloque_Ct{k}", 17625, 17650, 2125, y1 - WT, z, zt, [door(2450, z)], IN)
+        wall_y(f"Bloque_Dt{k}", 18875, 18900, 2125, y1 - WT, z, zt, [door(2650, z)], IN)
+        wall_y(f"Bloque_At{k}", 17500, 17525, y0 + WT, 1925, z, zt, [door(1700, z)], IN)
+        wall_y(f"Bloque_Esc{k}", SX0 - WT, SX0, y0 + WT, 1925, z, zt, [], IN)     # muro oeste de la escalera
+        # ---- Escalera: tramo A hacia el norte, rellano, tramo B hacia el sur ----
+        stair_flight(f"Bloque_EscA{k}", SX0 + 10, 19200, 1900, -1, z)
+        box(f"Bloque_Rellano{k}", SX0 + 10, SX1 - 10, SY0 + 15, 1648, z + 140, z + 160, M_FLOOR)
+        stair_flight(f"Bloque_EscB{k}", 19220, SX1 - 10, 1648, 1, z + 160)
+        # ---- Forjado de la planta de arriba (con el hueco de la escalera) ----
+        box(f"Bloque_Forjado{k + 1}_O", x0 + WT, SX0, y0 + WT, y1 - WT, zt - 20, zt, M_FLOOR)
+        box(f"Bloque_Forjado{k + 1}_E", SX0, x1 - WT, SY1, y1 - WT, zt - 20, zt, M_FLOOR)
+        # ---- Luces: bombilla en cada piso (alguna apagada), fluorescentes en pasillo y escalera ----
+        ceil = zt - 30
+        for i, (lx, ly) in enumerate(((17280, 1620), (18450, 1620), (17350, 2500), (17950, 2500), (18550, 2500), (19150, 2500))):
+            if (k * 7 + i) % 5 != 3:
+                interior_light(f"Bloque_Luz{k}_{i}", lx, ly, ceil, True, 28.0, 650.0)
+        interior_light(f"Bloque_LuzPasillo{k}_O", 17600, 2025, ceil, False, 22.0, 650.0)
+        interior_light(f"Bloque_LuzPasillo{k}_E", 18600, 2025, ceil, False, 22.0, 650.0)
+        interior_light(f"Bloque_LuzEscalera{k}", 19210, 1500, z + 300, False, 26.0, 700.0)
+        # ---- Muebles ----
+        furniture(f"Bloque_P{k}A", 17250, 1600, z, "mesa")
+        furniture(f"Bloque_P{k}A2", 17760, 1500, z, "armario")
+        if k:
+            furniture(f"Bloque_P{k}B", 18200, 1550, z, "sofa")
+            furniture(f"Bloque_P{k}B2", 18700, 1450, z, "cama")
+        furniture(f"Bloque_P{k}C", 17350, 2650, z, "cama" if k != 2 else "mesa")
+        furniture(f"Bloque_P{k}C2", 17950, 2500, z, "sofa")
+        furniture(f"Bloque_P{k}D", 18550, 2550, z, "mesa")
+        furniture(f"Bloque_P{k}D2", 19200, 2700, z, "armario")
+        if k == 0:
+            furniture("Bloque_PortalBarricada", 18600, 1550, z, "barricada")
+    box("Bloque_Suelo", x0, x1, y0, y1, -2, 0, M_FLOOR)
+    # Remates de fachada: impostas, alféizares y cornisa (lectura de plantas desde la calle)
+    for k in (1, 2):
+        z = k * FH
+        box(f"Bloque_ImpN{k}", x0 - 6, x1 + 6, y0 - 8, y0, z - 10, z + 8, M_WALL)
+        box(f"Bloque_ImpS{k}", x0 - 6, x1 + 6, y1, y1 + 8, z - 10, z + 8, M_WALL)
+    # Zócalo a ambos lados del portal (por delante sería un escalón de 50 cm, más que el paso máximo de 42)
+    box("Bloque_Zocalo_O", x0 - 4, 18320, y0 - 4, y0, 0, 50, M_WALL)
+    box("Bloque_Zocalo_E", 18500, x1 + 4, y0 - 4, y0, 0, 50, M_WALL)
+    # ---- Azotea: losa, peto, caseta de la escalera con su puerta ----
+    zr = 3 * FH
+    box("Bloque_Azotea_O", x0, SX0, y0, y1, zr - 20, zr, M_FLOOR)
+    box("Bloque_Azotea_E", SX0, x1, SY1, y1, zr - 20, zr, M_FLOOR)
+    for name, b in (("N_O", (x0, CX0, y0, y0 + WT)), ("N_C", (CX0, CX1, y0, y0 + WT)), ("N_E", (CX1, x1, y0, y0 + WT)),
+                    ("S", (x0, x1, y1 - WT, y1)), ("O", (x0, x0 + WT, y0, y1)),
+                    ("E_N", (x1 - WT, x1, y0, 2350)), ("E_S", (x1 - WT, x1, 2550, y1))):   # hueco este: pasarela a C4
+        box(f"Bloque_Peto{name}", b[0], b[1], b[2], b[3], zr, zr + 105, W)
+    # Cornisa perimetral (solo por fuera: una losa entera tapaba el hueco de la escalera)
+    for name, b in (("N_O", (x0 - 15, CX0, y0 - 15, y0)), ("N_C", (CX0, CX1, y0 - 15, y0)), ("N_E", (CX1, x1 + 15, y0 - 15, y0)),
+                    ("S", (x0 - 15, x1 + 15, y1, y1 + 15)),
+                    ("O", (x0 - 15, x0, y0, y1)), ("E", (x1, x1 + 15, y0, y1))):
+        box(f"Bloque_Cornisa{name}", b[0], b[1], b[2], b[3], zr - 25, zr - 5, M_WALL)
+    ph = zr + 280
+    box("Bloque_Caseta_O", SX0 - WT, SX0, y0, 1950, zr, ph, W)
+    box("Bloque_Caseta_E", x1 - WT, x1, y0, 1950, zr, ph, W)
+    box("Bloque_Caseta_N", SX0 - WT, x1, y0, y0 + WT, zr, ph, W)
+    wall_x("Bloque_Caseta_S", 1925, 1950, SX0 - WT, x1, zr, ph, [(19230, 19440, zr, zr + 225)], W)
+    box("Bloque_Caseta_Techo", SX0 - WT - 10, x1 + 10, y0 - 10, 1960, ph, ph + 20, M_WALL)
+    box("Bloque_Caseta_Suelo", SX0, x1 - WT, 1900, 1925, zr - 20, zr, M_FLOOR)
+    # ---- Fase 8: lo que derriba el blindado (paño de la 2.ª planta entre ventanas, peto y cornisa encima) ----
+    collapse = {"Bloque_N2_S2", "Bloque_N2_B2", "Bloque_N2_T2", "Bloque_N2_S3", "Bloque_PetoN_C", "Bloque_CornisaN_C"}
+    for a in actors.get_all_level_actors():
+        if a.get_actor_label() in collapse:
+            a.static_mesh_component.set_mobility(unreal.ComponentMobility.MOVABLE)
+            a.tags = [unreal.Name("BLCollapse")]
+    # Escombros que tapan el primer tramo de la escalera (aparecen con el derrumbe si el jugador ya está arriba)
+    for i, (bx0, bx1, by0, by1, bz1) in enumerate(((SX0 + 10, 19200, 1650, 1900, 150), (19220, SX1 - 10, 1648, 1800, 230),
+                                                    (SX0 + 10, SX1 - 10, SY0 + 15, 1650, 200))):
+        r = box(f"Bloque_EscombrosEscalera{i}", bx0, bx1, by0, by1, 0, bz1, M_WALL)
+        r.tags = [unreal.Name("BLCollapseBlock")]
+        r.static_mesh_component.set_editor_property("can_ever_affect_navigation", False)   # el NavMesh es el de antes del derrumbe
+    for i, (tx, tz) in enumerate(((17500, 470), (18000, 800), (18900, 820))):
+        marker("BLBTR_Target", tx, y0 - 10, tz)
+    # ---- Gameplay: marcadores, Varek y la escuadra que lo retiene ----
+    marker("BLObj_Bloque", 18410, 1450)
+    start_point("Bloque", 18410, 800, 90)
+    marker("BLObj_VarekPiso", 17300, 2600)
+    vz = 2 * FH
+    varek = actors.spawn_actor_from_class(unreal.BLVarek, unreal.Vector(17200, 2600, vz + 96), unreal.Rotator(roll=0, pitch=0, yaw=0))
+    varek.set_actor_label("Varek")
+    free = actors.spawn_actor_from_class(unreal.BLInteractable, unreal.Vector(17200, 2600, vz + 60))
+    free.set_actor_label("Liberar_Varek")
+    free.set_editor_property("prompt", "Liberar a Varek")
+    free.set_editor_property("hold_time", 2.0)
+    free.set_editor_property("pickup", False)
+    free.tags = [unreal.Name("BLObjective_Varek")]
+    enemy("Bloque_Portal", "Bloque", 18400, 1700, 90)
+    enemy("Bloque_P1_Pasillo", "Bloque", 17800, 2010, 0, z=FH)
+    enemy("Bloque_P1_PisoB", "Bloque", 18300, 1650, 180, z=FH)
+    enemy("Bloque_P2_Pasillo", "Bloque", 18700, 2010, 180, z=2 * FH)
+    enemy("Bloque_P2_PisoC", "Bloque", 17450, 2450, 180, z=2 * FH)
+    enemy("Bloque_Azotea", "Bloque", 18300, 2500, 0, z=3 * FH)
+
+
+# ---------------------------------------------------------------------------
+# Fases 8-9 (Bloque 11): huida por los tejados y extracción en el muelle
+# ---------------------------------------------------------------------------
+def facade_building(name, x0, x1, y0, y1, h, wall, face_mask, cornice_mask, street_mask=0, seed=1):
+    a = actors.spawn_actor_from_class(unreal.BLBuilding, unreal.Vector((x0 + x1) / 2, (y0 + y1) / 2, 0))
+    a.set_actor_label(name)
+    a.set_editor_property("size", unreal.Vector(x1 - x0, y1 - y0, h))
+    a.set_editor_property("seed", seed)
+    a.set_editor_property("face_mask", face_mask)
+    a.set_editor_property("cornice_mask", cornice_mask)
+    a.set_editor_property("street_mask", street_mask)
+    a.set_editor_property("wall_material", mat(f"MI_Fac_Wall_{wall}"))
+    a.set_editor_property("phys_material", unreal.load_asset("/Game/Environment/PhysicalMaterials/PM_Concrete"))
+    return a
+
+
+def rooftops():
+    """C4 (pegado al local, a la altura del bloque C3): pasarela de andamio desde la azotea de C3 y escalera de
+    incendios de tres tramos por la fachada este, hasta el muelle."""
+    zr = 3 * FH
+    X0, X1, Y0, Y1 = 19760, 21000, 1330, 2900
+    # Fachadas solo al muelle (este) y al callejón (sur); al oeste y al norte, medianeras ciegas
+    facade_building("C4", X0, X1, Y0, Y1, zr, "Grey", 1 | 4, 4, seed=4242)
+    box("C4_Medianera_O", X0, X0 + 25, Y0, Y1, 0, zr, M_PLASTER)
+    box("C4_Junta_N", X0, X1, Y0, Y0 + 25, 0, zr, M_PLASTER)
+    # Peto de la azotea: al oeste con el paso de la pasarela, al este con la salida a la escalera de incendios
+    box("C4_Peto_O1", X0, X0 + 25, Y0, 2350, zr, zr + 105, M_PLASTER)
+    box("C4_Peto_O2", X0, X0 + 25, 2550, Y1, zr, zr + 105, M_PLASTER)
+    box("C4_Peto_E1", X1 - 25, X1, Y0, 2290, zr, zr + 105, M_PLASTER)
+    box("C4_Peto_E2", X1 - 25, X1, 2455, Y1 - 25, zr, zr + 105, M_PLASTER)
+    # Cubierta: depósito de agua, aparatos de aire, caseta y antena (coberturas y silueta)
+    box("C4_Deposito", 20250, 20550, 2500, 2800, zr, zr + 180, M_RUST)
+    box("C4_Deposito_Pies", 20240, 20560, 2490, 2810, zr, zr + 20, M_METAL)
+    for i, (ax, ay) in enumerate(((20000, 1600), (20150, 1600), (20700, 2700))):
+        box(f"C4_AC{i}", ax - 50, ax + 50, ay - 35, ay + 35, zr, zr + 90, M_METAL)
+        covers_for_box(ax - 50, ax + 50, ay - 35, ay + 35, True)
+    box("C4_Caseta", 20500, 20850, 1500, 1800, zr, zr + 260, M_PLASTER)
+    box("C4_Caseta_Techo", 20480, 20870, 1480, 1820, zr + 260, zr + 275, M_WALL)
+    box("C4_Antena", 20600, 20610, 1600, 1610, zr + 275, zr + 700, M_METAL)
+    # Pasarela de andamio entre C3 y C4 (tablones, barandillas y pies hasta el suelo)
+    box("Pasarela_Tablones", BX1 - 25, X0 + 40, 2360, 2540, zr - 15, zr, M_WOOD)
+    for side, (ya, yb) in (("N", (2350, 2362)), ("S", (2538, 2550))):
+        box(f"Pasarela_Baranda{side}", BX1, X0 + 25, ya, yb, zr + 95, zr + 105, M_METAL)
+        box(f"Pasarela_Baranda{side}2", BX1, X0 + 25, ya, yb, zr + 45, zr + 52, M_METAL)
+        for px in (BX1 + 10, X0 - 10):
+            box(f"Pasarela_Pie{side}{px}", px - 5, px + 5, ya, yb, 0, zr + 105, M_METAL)
+    for px in (BX1 + 10, X0 - 10):
+        box(f"Pasarela_Travesano{px}", px - 5, px + 5, 2350, 2550, zr - 30, zr - 15, M_METAL)
+    # Escalera de incendios: tres tramos de 18 escalones (320 cm por planta) en dos calles (A junto a la fachada, B fuera)
+    # (separada 105 cm de la fachada: los balcones del kit sobresalen 95)
+    # Calles de 160: con 115 el radio del agente (34 por lado) no dejaba NavMesh en los tramos
+    XA0, XA1, XB0, XB1 = X1 + 105, X1 + 265, X1 + 275, X1 + 435
+    rise = FH / 18
+    stair_flight("Incendios_T0", XA0, XA1, 1800, 1, 0, 18, rise, m=M_METAL)
+    stair_flight("Incendios_T1", XB0, XB1, 2304, -1, FH, 18, rise, m=M_METAL)
+    stair_flight("Incendios_T2", XA0, XA1, 1800, 1, 2 * FH, 18, rise, m=M_METAL)
+    box("Incendios_Rellano1", XA0, XB1, 2304, 2440, FH - 20, FH, M_METAL)
+    box("Incendios_Rellano2", XA0, XB1, 1664, 1800, 2 * FH - 20, 2 * FH, M_METAL)
+    box("Incendios_Rellano3", X1 - 45, XB1, 2290, 2455, zr - 20, zr + 1, M_METAL)   # pisa la azotea: sin hueco sobre la fachada
+    box("Incendios_Separador", XA1, XB0, 1800, 2304, 0, zr, M_METAL)
+    for k in range(4):
+        z = k * FH
+        box(f"Incendios_Baranda{k}", XB1, XB1 + 8, 1664, 2455, z + 90, z + 100, M_METAL)
+        box(f"Incendios_BarandaFin{k}", XA0, XB1 + 8, 2447, 2455, z + 90, z + 100, M_METAL)
+    for i, py in enumerate((1664, 2050, 2447)):
+        box(f"Incendios_Pilar{i}", XB1, XB1 + 8, py, py + 8, 0, zr + 100, M_METAL)
+    start_point("Azotea", 18500, 2025, 180, z=2 * FH)
+    checkpoint("Azotea", 18950, 19475, 1950, 2875, 0, z=zr)
+    start_point("Muelle", 21185, 1650, 0)
+    checkpoint("Muelle", 21000, 21800, 1000, 2400, 0)
+
+
+def quay():
+    """Muelle (x 210-266 m): explanada de contenedores, nave al norte, grúa pórtico, agua al este y la zona de
+    aterrizaje del helicóptero. Las oleadas llegan por una bolsa tras la valla norte y por el callejón G (sur de C4)."""
+    lc = unreal.LinearColor
+    box("Muelle_Suelo", 21000, 26600, -2000, 4240, -2, 0, M_ASPHALT)
+    box("Callejon_G_Suelo", 19750, 21000, 2900, 4240, -2, 0, M_FLOOR)
+    box("Callejon_G_MuroO", 19690, 19750, 2900, 4240, 0, 600, M_WALL)
+    # Nave del puerto al norte (cierra el muelle; su fachada sur da a la explanada)
+    facade_building("Nave_Muelle", 21000, 24500, -2000, -100, 900, "Concrete", 1 | 4, 1 | 4, street_mask=4, seed=5151)
+    box("Nave_Cierre_O", 20970, 21000, -2000, -100, 0, 900, M_WALL)
+    # Valla norte con la bolsa por la que saltan los milicianos
+    box("Valla_N1", 24500, 25000, -2060, -2000, 0, 450, M_WALL)
+    box("Valla_N2", 25500, 26600, -2060, -2000, 0, 450, M_WALL)
+    box("Bolsa_Suelo", 24900, 25600, -2760, -2000, -2, 0, M_DIRT)
+    box("Bolsa_MuroO", 24940, 25000, -2760, -2060, 0, 450, M_WALL)
+    box("Bolsa_MuroE", 25500, 25560, -2760, -2060, 0, 450, M_WALL)
+    box("Bolsa_MuroN", 24940, 25560, -2760, -2700, 0, 450, M_WALL)
+    # Borde del muelle, bolardos y agua (M_Env_Water: refleja el amanecer)
+    box("Muelle_Bordillo", 26520, 26600, -2000, 4240, 0, 22, M_WALL)
+    box("Muelle_Muro", 26600, 26700, -12000, 12000, -400, 0, M_WALL)
+    for i, y in enumerate(range(-1600, 4200, 900)):
+        box(f"Bolardo{i}", 26420, 26480, y - 30, y + 30, 0, 55, M_RUST)
+    water = box("Agua", 26700, 46000, -14000, 14000, -320, -260, mat("M_Env_Water"))
+    water.static_mesh_component.set_collision_profile_name("NoCollision")
+    # Contenedores (coberturas alrededor de la zona de aterrizaje; algunos apilados)
+    for i, (x, y, yaw, z, c) in enumerate(((22200, 450, 90, 0, 0), (22800, 2200, 0, 0, 1), (22800, 2200, 3, 259, 2),
+                                            (23700, 3400, 90, 0, 3), (24100, 600, 0, 0, 2), (24300, 2650, 15, 0, 0),
+                                            (21900, 3500, 0, 0, 1), (25900, -1100, 90, 0, 3), (23300, -600, 0, 0, 0),
+                                            (23300, -600, -4, 259, 1), (26000, 3350, 0, 0, 2))):
+        prop("SM_Container_20ft", x, y, yaw, z=z, label=f"Contenedor_Muelle_{i}", material=CONTAINER_MATS[c])
+    prop("SM_Cover_Jersey", 25900, 2100, 80, label="Jersey_Muelle_1")
+    prop("SM_Cover_Sandbag_Corner", 24400, 1500, 90, label="Sacos_Muelle_1")
+    prop("SM_Cover_Sandbag_Straight", 24400, 1150, 90, label="Sacos_Muelle_2")
+    # Grúa pórtico sobre el borde del muelle (silueta contra el amanecer)
+    for i, (gx, gy) in enumerate(((25700, 3000), (26400, 3000), (25700, 3900), (26400, 3900))):
+        box(f"Grua_Pata{i}", gx - 45, gx + 45, gy - 45, gy + 45, 0, 2300, M_RUST)
+    for i, gy in enumerate((3000, 3900)):
+        box(f"Grua_Viga{i}", 25650, 26450, gy - 50, gy + 50, 2300, 2420, M_RUST)
+    box("Grua_Pluma", 24800, 33000, 3380, 3520, 2420, 2560, M_RUST)
+    box("Grua_Cabina", 25900, 26200, 3300, 3600, 2120, 2300, M_METAL)
+    box("Grua_Cable", 31500, 31508, 3446, 3454, 900, 2420, M_METAL)
+    prop("SM_Container_20ft", 31500, 3450, 8, z=640, label="Contenedor_Colgado", material=CONTAINER_MATS[3])
+    # Zona de aterrizaje: humo verde y balizas
+    smoke("Humo_LZ", 24850, 1450, 0, color=lc(0.1, 0.32, 0.12, 1), opacity=0.55, max_particles=26, life=11.0,
+          start_size=unreal.Vector2D(60, 110), end_size=unreal.Vector2D(450, 800), rise_speed=90.0, spawn_radius=25.0,
+          wind=unreal.Vector(-60, 20, 0))
+    for i, (bx, by) in enumerate(((24300, 650), (25700, 650), (24300, 1950), (25700, 1950))):
+        interior_light(f"Baliza_LZ{i}", bx, by, 15, True, 18.0, 400.0)
+    for i, (x, y, yaw) in enumerate(((22200, -50, 90), (24500, 3950, -90), (26350, 600, 180))):
+        sodium_light(f"Farola_Muelle_{i}", x, y, yaw, shadows=(i == 0))
+    ambient("SW_AmbZ_Water_Loop", 26500, -1000, 0, 1.0, "Amb_Muelle_0")
+    ambient("SW_AmbZ_Water_Loop", 26500, 2600, 0, 1.0, "Amb_Muelle_1")
+    # Blindado de la Columna (fase 8): espera escondido al oeste de la calle principal
+    btr = actors.spawn_actor_from_class(unreal.BLBTR, unreal.Vector(9300, 700, 0), unreal.Rotator(roll=0, pitch=0, yaw=0))
+    btr.set_actor_label("Blindado")
+    btr.set_editor_property("path", [unreal.Vector(9300, 700, 0), unreal.Vector(11000, 700, 0), unreal.Vector(13250, 700, 0)])
+    btr.set_editor_property("collapse_radio", [radio("M01_Derrumbe")])
+    btr.tags = [unreal.Name("BLBTR")]
+    # Helicóptero de extracción (fase 9): llega desde el mar, estacionario sobre la zona, aterriza para subir
+    heli = actors.spawn_actor_from_class(unreal.BLHelicopter, unreal.Vector(40000, 1300, 3500), unreal.Rotator(roll=0, pitch=0, yaw=180))
+    heli.set_actor_label("Helicoptero")
+    heli.set_editor_property("path", [unreal.Vector(40000, 1300, 3500), unreal.Vector(31000, 1250, 2200)])
+    heli.set_editor_property("hover_point", unreal.Vector(25000, 1300, 1150))
+    heli.set_editor_property("land_point", unreal.Vector(25000, 1300, 0))
+    heli.set_editor_property("hover_yaw", 180.0)
+    heli.set_editor_property("approach_delay", 8.0)
+    heli.tags = [unreal.Name("BLHeli"), unreal.Name("BLHeli_Land")]
+    board = actors.spawn_actor_from_class(unreal.BLInteractable, unreal.Vector(25000, 1300, 110))
+    board.set_actor_label("Subir_Helicoptero")
+    board.set_editor_property("prompt", "Subir al helicóptero")
+    board.set_editor_property("hold_time", 1.0)
+    board.set_editor_property("pickup", False)
+    board.tags = [unreal.Name("BLObjective_Heli")]
+
+
+def enemy(label, squad, x, y, yaw, patrol=(), z=0.0):
+    e = actors.spawn_actor_from_class(unreal.BLEnemyCharacter, unreal.Vector(x, y, z + 96), unreal.Rotator(roll=0, pitch=0, yaw=yaw))
     e.set_actor_label(label)
     e.set_editor_property("squad_id", squad)
     e.set_editor_property("patrol_points", [unreal.Vector(px, py, 0) for px, py in patrol])
@@ -433,8 +800,8 @@ def enemies():
     enemy("Calle_Local", "Calle", 20300, 420, 180)
 
 
-def marker(tag, x, y):
-    tp = actors.spawn_actor_from_class(unreal.TargetPoint, unreal.Vector(x, y, 0))
+def marker(tag, x, y, z=0.0):
+    tp = actors.spawn_actor_from_class(unreal.TargetPoint, unreal.Vector(x, y, z))
     tp.set_actor_label(tag)
     tp.tags = [unreal.Name(tag)]
     return tp
@@ -447,8 +814,8 @@ def load_voice_lines():
     with open(path, encoding="utf-8") as f:
         for line in f:
             c = line.rstrip("\r\n").split("\t")
-            if len(c) >= 7 and not line.startswith("#") and c[1] == "radio":
-                out[c[0]] = (c[2], c[6])
+            if len(c) >= 7 and not line.startswith("#") and c[1] in ("radio", "persona"):
+                out[c[0]] = (c[2], c[6], c[1] == "persona")
     return out
 
 
@@ -456,10 +823,11 @@ VOICE_LINES = load_voice_lines()
 
 
 def radio(line_id):
-    speaker, text = VOICE_LINES[line_id]
+    speaker, text, in_person = VOICE_LINES[line_id]
     line = unreal.BLRadioLine()
     line.set_editor_property("speaker", speaker)
     line.set_editor_property("text", text)
+    line.set_editor_property("person", in_person)   # bInPerson (Python le quita "b" e "In")
     voice_path = f"/Game/Audio/Voice/Radio/VO_{line_id}"
     if unreal.EditorAssetLibrary.does_asset_exist(voice_path):
         line.set_editor_property("voice", unreal.load_asset(voice_path))
@@ -468,7 +836,18 @@ def radio(line_id):
     return line
 
 
-def objective_def(text, kind, tag="", squad="", radius=400.0, marker_on=True, on_start=(), on_complete=()):
+def wave(tags, count, delay, smoke=False, radio_lines=()):
+    w = unreal.BLWave()
+    w.set_editor_property("spawn_tags", [unreal.Name(t) for t in tags])
+    w.set_editor_property("count", count)
+    w.set_editor_property("delay", delay)
+    w.set_editor_property("smoke", smoke)
+    w.set_editor_property("radio", list(radio_lines))
+    return w
+
+
+def objective_def(text, kind, tag="", squad="", radius=400.0, marker_on=True, on_start=(), on_complete=(), waves=(), min_duration=60.0,
+                  check_height=False, activate=()):
     o = unreal.BLObjective()
     o.set_editor_property("text", text)
     o.set_editor_property("type", kind)
@@ -478,6 +857,11 @@ def objective_def(text, kind, tag="", squad="", radius=400.0, marker_on=True, on
     o.set_editor_property("show_marker", marker_on)
     o.set_editor_property("radio_on_start", list(on_start))
     o.set_editor_property("radio_on_complete", list(on_complete))
+    if waves:
+        o.set_editor_property("waves", list(waves))
+        o.set_editor_property("min_duration", min_duration)
+    o.set_editor_property("check_height", check_height)
+    o.set_editor_property("activate_tags", [unreal.Name(t) for t in activate])
     return o
 
 
@@ -497,6 +881,21 @@ def mission():
     hd.tags = [unreal.Name("BLObjective_Disco")]
 
     REACH, CLEAR, USE = unreal.BLObjectiveType.REACH, unreal.BLObjectiveType.CLEAR_SQUAD, unreal.BLObjectiveType.INTERACT
+    DEFEND = unreal.BLObjectiveType.DEFEND
+    # Fase 7 (contraataque): puntos de aparición de las oleadas (fuera de la vista desde el bloque)
+    for i, (x, y) in enumerate(((14300, 450), (14600, 950), (14900, 300))):
+        marker("BLWave_Calle", x, y)
+    for x, y in ((14700, 3500), (15500, 3300)):
+        marker("BLWave_Pasaje", x, y)
+    marker("BLWave_Callejon", 16750, 3500)
+    # Fases 8-9: azotea, pie de la escalera de incendios, zona de aterrizaje y oleadas del muelle
+    marker("BLObj_Azotea", 18250, 2100, 3 * FH)   # centro de la azotea: con radio 1500 vale toda
+    marker("BLObj_Escalera", 21185, 1720, 0)
+    marker("BLObj_LZ", 25000, 1300, 0)
+    for x, y in ((25150, -2450), (25350, -2300)):
+        marker("BLWave_MuelleN", x, y)
+    for x, y in ((20150, 3500), (20500, 3900)):
+        marker("BLWave_MuelleO", x, y)
     d = actors.spawn_actor_from_class(unreal.BLMissionDirector, unreal.Vector(0, 0, 300))
     d.set_actor_label("Director_Mision")
     d.set_editor_property("mission_name", "AMANECER ROTO")
@@ -517,7 +916,30 @@ def mission():
         objective_def("Avanza por la calle principal hasta el local de Varek", REACH, "BLObj_Local", radius=300.0,
                   on_complete=[radio("M01_Local")]),
         objective_def("Recupera el disco duro de Varek", USE, "BLObjective_Disco",
-                  on_complete=[radio("M01_Disco")]),
+                  on_complete=[radio("M01_Disco"), radio("M01_VarekBloque")]),
+        objective_def("Entra en el bloque de viviendas de enfrente", REACH, "BLObj_Bloque", radius=260.0),
+        objective_def("Despeja el bloque y encuentra a Varek (última planta)", CLEAR, "BLObj_VarekPiso", squad="Bloque",
+                  on_start=[radio("M01_Bloque")]),
+        objective_def("Libera a Varek", USE, "BLObjective_Varek",
+                  on_complete=[radio("M01_VarekHabla"), radio("M01_VarekOk")]),
+        objective_def("Defiende el bloque con Varek hasta que llegue el apoyo", DEFEND, "BLObj_VarekPiso", squad="Contra",
+                  on_start=[radio("M01_Contra")], on_complete=[radio("M01_ContraOk")], min_duration=75.0,
+                  waves=[wave(["BLWave_Calle"], 4, 8.0, True, [radio("M01_ContraHumo")]),
+                         wave(["BLWave_Pasaje"], 4, 10.0, False, [radio("M01_ContraPasaje")]),
+                         wave(["BLWave_Calle", "BLWave_Callejon"], 5, 10.0, True, [radio("M01_ContraUltima")])]),
+        # Fase 8: el blindado entra por la calle y derriba la fachada; huida por los tejados
+        objective_def("Sube a la azotea del bloque", REACH, "BLObj_Azotea", radius=1500.0, check_height=True, activate=["BLBTR"],
+                      on_start=[radio("M01_Blindado")], on_complete=[radio("M01_Azotea")]),
+        objective_def("Cruza por los tejados y baja al muelle", REACH, "BLObj_Escalera", radius=260.0, check_height=True,
+                      on_start=[radio("M01_Tejados")]),
+        # Fase 9: extracción en helicóptero
+        objective_def("Llega a la zona de aterrizaje", REACH, "BLObj_LZ", radius=700.0, on_start=[radio("M01_Muelle")]),
+        objective_def("Defiende la zona de aterrizaje hasta que llegue el helicóptero", DEFEND, "BLObj_LZ", squad="Muelle",
+                      activate=["BLHeli"], on_start=[radio("M01_LZ")], on_complete=[radio("M01_HeliLlega")], min_duration=45.0,
+                      waves=[wave(["BLWave_MuelleN"], 3, 6.0, False, [radio("M01_LZNorte")]),
+                             wave(["BLWave_MuelleO"], 4, 8.0, True, [radio("M01_LZOeste")]),
+                             wave(["BLWave_MuelleN", "BLWave_MuelleO"], 4, 12.0)]),   # con el helicóptero ya encima
+        objective_def("Sube al helicóptero", USE, "BLObjective_Heli", activate=["BLHeli_Land"], on_start=[radio("M01_Halcon")]),
     ])
     d.set_editor_property("debriefing", [
         radio("M01_Debrief"),
@@ -624,8 +1046,8 @@ def dressing():
         P("SM_Prop_Dumpster", x, y, yaw)
     for x, y, yaw in ((11550, 120, 80), (14100, 1210, 10), (17150, 110, 200), (18900, 1200, 45)):
         P("SM_Prop_TrashBags", x, y, yaw)
-    for x, y, mesh, yaw in ((12450, 1150, "SM_Prop_Rubble_B", 30), (15700, 160, "SM_Prop_Rubble_A", 110),
-                            (13100, 150, "SM_Prop_Rubble_C", 300), (18200, 1170, "SM_Prop_Rubble_C", 75)):
+    for x, y, mesh, yaw in ((12450, 1150, "SM_Prop_Rubble_B", 30), (15750, 40, "SM_Prop_Rubble_A", 110),
+                            (13100, 150, "SM_Prop_Rubble_C", 300), (17700, 1170, "SM_Prop_Rubble_C", 75)):
         P(mesh, x, y, yaw)
     for y in (150, 1050):
         P("SM_Prop_Bollard", 19430, y)
@@ -709,9 +1131,10 @@ def lighting():
 
 def navigation():
     # Volumen de navegación que cubre todo el recorrido (pinceles de 200 cm: escala = tamaño / 200)
-    x0, x1, y0, y1 = -200, 21200, -8200, 4200
-    nav = actors.spawn_actor_from_class(unreal.NavMeshBoundsVolume, unreal.Vector((x0 + x1) / 2, (y0 + y1) / 2, 400))
-    nav.set_actor_scale3d(unreal.Vector((x1 - x0) / 200, (y1 - y0) / 200, 1000 / 200))
+    x0, x1, y0, y1 = -200, 26600, -8200, 4200
+    # Hasta 13 m de alto: plantas y azotea del bloque de viviendas
+    nav = actors.spawn_actor_from_class(unreal.NavMeshBoundsVolume, unreal.Vector((x0 + x1) / 2, (y0 + y1) / 2, 600))
+    nav.set_actor_scale3d(unreal.Vector((x1 - x0) / 200, (y1 - y0) / 200, 1400 / 200))
     nav.set_actor_label("NavMeshBounds")
     state["nav_volume"] = nav
 
@@ -740,11 +1163,16 @@ def build():
     enemies()
     log(f"Puntos de cobertura: {COVER_COUNT[0]}")
     # Límites del nivel (muros perimetrales: nada fuera del recorrido es accesible)
-    for name, b in (("Limite_N", (-300, 21300, -8300, -8240)), ("Limite_S", (-300, 21300, 4240, 4300)),
-                    ("Limite_O", (-300, -240, -8300, 4300)), ("Limite_E", (21240, 21300, -8300, 4300))):
+    for name, b in (("Limite_N", (-300, 26660, -8300, -8240)), ("Limite_S", (-300, 26660, 4240, 4300)),
+                    ("Limite_O", (-300, -240, -8300, 4300))):
         box(name, b[0], b[1], b[2], b[3], 0, 800, M_WALL)
+    # Borde del muelle: muro invisible (no se cae al agua) en lugar del muro del este
+    edge = box("Limite_E", 26600, 26660, -8300, 4300, 0, 800, M_WALL)
+    edge.set_actor_hidden_in_game(True)
     box("Relleno_Oeste", -240, 1460, -8240, -1600, 0, 600, M_WALL)
     finish_buildings()
+    rooftops()
+    quay()
     dressing()
     effects()
     lighting()
@@ -757,7 +1185,10 @@ def check_navigation():
     world = unreal.EditorLevelLibrary.get_editor_world()
     pts = [("Fase1", unreal.Vector(300, -170, 100)), ("Fase2", unreal.Vector(3050, -2300, 100)),
            ("Fase3", unreal.Vector(9600, -4100, 100)), ("Fase4", unreal.Vector(9700, 600, 100)),
-           ("Objetivo", unreal.Vector(20300, 600, 100))]
+           ("Objetivo", unreal.Vector(20300, 600, 100)), ("Varek", unreal.Vector(17450, 2400, 740)),
+           ("Azotea", unreal.Vector(18300, 2500, 1060)), ("Tejado_C4", unreal.Vector(20400, 2100, 1060)),
+           ("Incendios_R3", unreal.Vector(21300, 2370, 1060)), ("Incendios_R2", unreal.Vector(21300, 1730, 740)),
+           ("Incendios_R1", unreal.Vector(21300, 2370, 420)), ("Escalera", unreal.Vector(21185, 1720, 100)), ("LZ", unreal.Vector(25000, 1300, 100))]
     ok = True
     for (na, a), (nb, b) in zip(pts, pts[1:]):
         path = unreal.NavigationSystemV1.find_path_to_location_synchronously(world, a, b)

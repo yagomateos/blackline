@@ -16,7 +16,48 @@ UENUM(BlueprintType)
 enum class EBLFireMode : uint8
 {
 	Semi,
-	Auto
+	Auto,
+	/** Corredera: un disparo por pulsación y después hay que bombear (CycleSounds, el guardamanos va y vuelve). */
+	Pump
+};
+
+/** Cómo se recarga en primera persona (línea de tiempo procedural de la mano izquierda). */
+UENUM(BlueprintType)
+enum class EBLReloadStyle : uint8
+{
+	/** Saca el cargador, lo guarda, mete el nuevo; en vacío golpea la retenida. */
+	Rifle,
+	/** El cargador cae solo, la mano trae otro del cinturón; en vacío monta la corredera por encima. */
+	Pistol,
+	/** Cartucho a cartucho por la portilla de carga (escopeta). En vacío el primero entra por la ventana de expulsión
+	 *  y se cierra la corredera; disparar interrumpe la recarga (los cartuchos ya metidos se quedan). */
+	Shells
+};
+
+/**
+ * Poses del arma en primera persona: desplazamientos en espacio de cámara respecto a la pose ADS calibrada
+ * (las rotaciones pivotan sobre la mira). Valores por defecto = los del AR-7. Ver UBLFirstPersonRigComponent.
+ */
+USTRUCT(BlueprintType)
+struct FBLWeaponPoses
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FVector HipLocation = FVector(8.f, 4.5f, -2.5f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FRotator HipRotation = FRotator(0.5f, -5.5f, -4.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FVector SprintLocation = FVector(7.f, 5.f, -4.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FRotator SprintRotation = FRotator(1.f, -20.f, -28.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FVector MantleLocation = FVector(-3.f, 2.f, -4.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FRotator MantleRotation = FRotator(-10.f, -10.f, -20.f);
+	/** Recarga (pose absoluta en espacio de cámara): posición del pistolete y orientación del arma
+	 *  (Yaw<0 cañón a la izquierda, Pitch>0 cañón arriba, Roll<0 parte de arriba hacia la izquierda). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FVector ReloadGripLocation = FVector(46.f, 9.f, -12.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FRotator ReloadRotation = FRotator(20.f, -20.f, 40.f);
+	/** Equipar/guardar: el arma sube desde abajo (y baja hasta aquí al cambiar de arma). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FVector EquipLocation = FVector(0.f, 4.f, -22.f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FRotator EquipRotation = FRotator(-35.f, -10.f, 20.f);
+	/** Distancia ojo-mira con la que se ajustaron estas poses (fuera de ADS no dependen de AimEyeDistance). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) float PoseReferenceAimDistance = 9.f;
 };
 
 /** Sonido que se reproduce en un instante concreto de una acción (p. ej. sacar cargador a 0,3 s). */
@@ -69,6 +110,15 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Sockets") float AimEyeDistance = 14.f;
 	/** Eje "adelante" de la malla (las armas de Epic y las nuestras apuntan a +Y). */
 	UPROPERTY(EditAnywhere, Category = "Sockets") FVector ForwardAxis = FVector(0.f, 1.f, 0.f);
+	/** Giro de la mano izquierda en el agarre, en espacio de la malla (pistola: la palma abraza el puño por la izquierda). */
+	UPROPERTY(EditAnywhere, Category = "Sockets") FRotator LeftHandGripRotation = FRotator::ZeroRotator;
+	/** Mano derecha respecto al origen del arma (espacio de la malla): el Mannequin agarra todas las armas como el fusil;
+	 *  en la pistola la mano baja por el puño (si no, el dorso tapa la corredera) y se inclina con él. */
+	UPROPERTY(EditAnywhere, Category = "Sockets") FVector RightHandOffset = FVector::ZeroVector;
+	UPROPERTY(EditAnywhere, Category = "Sockets") FRotator RightHandRotation = FRotator::ZeroRotator;
+
+	// ---- Primera persona ----
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FirstPerson") FBLWeaponPoses Poses;
 
 	// ---- Disparo ----
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") EBLFireMode FireMode = EBLFireMode::Auto;
@@ -85,6 +135,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float FalloffStart = 3000.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float FalloffEnd = 8000.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float FalloffMinMultiplier = 0.65f;
+	/** Perdigones por disparo (escopeta). Cada uno hace Damage; el hitmarker suma los de un mismo blanco. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire", meta = (ClampMin = "1")) int32 PelletCount = 1;
+	/** Semiángulo del cono de los perdigones (grados) desde la cadera y apuntando; se suma a la dispersión normal. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float PelletSpread = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float PelletAimSpread = 0.f;
 	/** Tiempo desde que se deja de esprintar hasta poder disparar. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire") float SprintToFireTime = 0.15f;
 
@@ -95,7 +150,7 @@ public:
 
 	// ---- Dispersión (grados, semiángulo del cono) ----
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spread") float HipSpread = 2.2f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spread") float AimSpread = 0.15f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spread") float AimSpread = 0.06f;
 	/** Extra a velocidad de andar (escala con la velocidad). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spread") float MoveSpread = 1.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spread") float AirSpread = 4.f;
@@ -105,7 +160,7 @@ public:
 	/** Recuperación de la dispersión acumulada (grados/s). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spread") float BloomRecovery = 8.f;
 	/** En ADS la dispersión acumulada se multiplica por esto. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spread") float AimBloomMultiplier = 0.25f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spread") float AimBloomMultiplier = 0.15f;
 
 	// ---- Retroceso: mueve la mira real del jugador ----
 	/** Subida vertical por disparo (grados). */
@@ -140,6 +195,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Reload") bool bChamberRound = true;
 	/** Momento (fracción) en que la munición entra en el arma. Cancelar antes no recarga. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Reload", meta = (ClampMin = "0", ClampMax = "1")) float ReloadAmmoInsertTime = 0.62f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Reload") EBLReloadStyle ReloadStyle = EBLReloadStyle::Rifle;
+	/** Recarga cartucho a cartucho (ReloadStyle Shells): llevar el arma a la pose, cada cartucho, meter el primero por la
+	 *  ventana y cerrar (en vacío) y volver. ReloadAmmoInsertTime = fracción de cada cartucho en que entra. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Reload|Shells") float ShellReloadStartTime = 0.35f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Reload|Shells") float ShellInsertTime = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Reload|Shells") float ShellPortLoadTime = 0.95f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Reload|Shells") float ShellReloadEndTime = 0.35f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Reload|Shells") TArray<TObjectPtr<USoundBase>> ShellInsertSounds;
+	/** Sonido del cargador vacío al caer al suelo (recarga de pistola). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Reload") TObjectPtr<USoundBase> MagazineDropSound;
 
 	// ---- Mecánica del arma (huesos de la propia malla, UBLWeaponAnimInstance) ----
 	/** Cerrojo: retrocede en cada disparo y queda abierto con el cargador vacío. */
@@ -149,6 +214,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mechanics") float BoltCycleTime = 0.07f;
 	/** Fracción de la recarga en vacío en que se suelta el cerrojo (golpe a la retenida). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mechanics", meta = (ClampMin = "0", ClampMax = "1")) float BoltReleaseTime = 0.71f;
+	/** Corredera (FireMode Pump): sonidos del bombeo tras cada disparo (Time = fracción del intervalo entre disparos)
+	 *  y momento en que sale la vaina (0 = al disparar, como en las armas automáticas). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mechanics") TArray<FBLTimedSound> CycleSounds;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mechanics", meta = (ClampMin = "0", ClampMax = "1")) float CasingEjectTime = 0.f;
+	/** La mano izquierda sigue al hueso del cerrojo (guardamanos de la escopeta). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mechanics") bool bLeftHandOnBolt = false;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mechanics") FName TriggerBone = FName("trigger");
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mechanics") float TriggerTravel = 0.3f;
 
@@ -158,6 +229,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation") TObjectPtr<UAnimSequence> EquipAnim;
 	/** Equipar al aparecer dura esto (la animación se acelera para encajar). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation") float EquipTime = 0.6f;
+	/** Bajar el arma al cambiar a otra. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation") float HolsterTime = 0.35f;
 
 	// ---- Sonido ----
 	/** Disparo cercano del jugador (2D, estéreo): golpe + primeras reflexiones. Una al azar por tiro. */
@@ -180,6 +253,8 @@ public:
 	// ---- Efectos ----
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FX") TObjectPtr<UStaticMesh> MuzzleFlashMesh;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FX") float MuzzleFlashDuration = 0.03f;
+	/** Tamaño del fogonazo (pistola < 1: menos gas y cañón corto). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FX") float MuzzleFlashScale = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FX") FLinearColor MuzzleLightColor = FLinearColor(1.f, 0.62f, 0.3f);
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FX") float MuzzleLightIntensity = 7000.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FX") TObjectPtr<UStaticMesh> CasingMesh;

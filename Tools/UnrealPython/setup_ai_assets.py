@@ -28,4 +28,7 @@ def militia_material(name, parent, tint, rough):
 # Columna Vesk: ropa civil/militar mezclada en tonos caqui y pardos (se distingue del verde oliva del jugador)
 militia_material("MI_Militia_Body", "/Game/Characters/Mannequins/Materials/Manny/MI_Manny_01_New", (0.16, 0.13, 0.085), 0.9)
 militia_material("MI_Militia_Sleeves", "/Game/Characters/Mannequins/Materials/Manny/MI_Manny_02_New", (0.06, 0.05, 0.04), 0.85)
+# Tomas Varek (Bloque 11): civil, chaqueta azul grisácea y pantalón oscuro
+militia_material("MI_Varek_Body", "/Game/Characters/Mannequins/Materials/Manny/MI_Manny_01_New", (0.018, 0.025, 0.045), 0.85)
+militia_material("MI_Varek_Sleeves", "/Game/Characters/Mannequins/Materials/Manny/MI_Manny_02_New", (0.22, 0.17, 0.11), 0.8)
 unreal.log("[BL_AI] OK")

@@ -33,6 +33,13 @@ public:
 	/** Movimiento de cámara y arma (bob, sway, sacudidas): 1 = completo, 0,25 = mínimo (accesibilidad). */
 	UPROPERTY(config) float MotionScale = 1.f;
 
+	// ---- Juego ----
+	/** 0 Recluta, 1 Veterano (por defecto), 2 Élite: daño que recibe el jugador. */
+	UPROPERTY(config) int32 Difficulty = 1;
+	static constexpr int32 NumDifficulties = 3;
+	static float PlayerDamageTaken(int32 Level);
+	static const TCHAR* DifficultyName(int32 Level);
+
 	// ---- Audio (0..1) ----
 	UPROPERTY(config) float MasterVolume = 1.f;
 	UPROPERTY(config) float MusicVolume = 0.8f;
@@ -44,7 +51,7 @@ public:
 
 	/** Volúmenes: volumen general del dispositivo + SMix_User (clases SC_Music/SFX/Voice/Ambience). */
 	void ApplyAudio(const UObject* WorldContext) const;
-	/** Sensibilidad, inversión, FOV y movimiento de cámara al personaje del jugador (si hay). */
+	/** Sensibilidad, inversión, FOV, movimiento de cámara y dificultad al personaje del jugador (si hay). */
 	void ApplyToPlayer(APlayerController* PC) const;
 
 	// ---- Gráficos (UGameUserSettings) ----

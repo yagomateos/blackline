@@ -8,6 +8,11 @@
 #include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMeshActor.h"
+#include "Engine/StaticMesh.h"
+#include "TimerManager.h"
+#include "Blackline.h"
+#include "Combat/BLDamageTypes.h"
 #include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
 #include "FX/BLFXSubsystem.h"
@@ -138,14 +143,14 @@ void UBLWeaponFXComponent::PlayFire(const UBLWeaponData* Data)
 	}
 	bTailPending = true;
 	TimeSinceShot = 0.f;
-	TailDelay = Data->GetShotInterval() * 1.5f;
+	TailDelay = FMath::Min(Data->GetShotInterval() * 1.5f, 0.25f);  // automática: tras la ráfaga; corredera: enseguida
 
 	// ---- Fogonazo: forma, giro y tamaño aleatorios en cada disparo ----
 	if (MuzzleFlash && Data->MuzzleFlashMesh)
 	{
 		FTransform Rel = GetWeaponSocketTransform(Data->MuzzleSocket, FVector(0.f, 50.f, 10.f));
 		Rel.SetRotation(Rel.GetRotation() * FQuat(FVector::XAxisVector, FMath::FRandRange(0.f, 2.f * PI)));
-		const float S = FMath::FRandRange(0.6f, 0.85f);
+		const float S = FMath::FRandRange(0.6f, 0.85f) * Data->MuzzleFlashScale;
 		Rel.SetScale3D(FVector(FMath::FRandRange(0.7f, 1.2f) * S, S, S));
 		MuzzleFlash->SetRelativeTransform(Rel);
 		MuzzleFlash->SetVisibility(true);
@@ -157,8 +162,17 @@ void UBLWeaponFXComponent::PlayFire(const UBLWeaponData* Data)
 	}
 	FlashRemaining = Data->MuzzleFlashDuration;
 
+	if (Data->CasingEjectTime <= 0.f)  // si no, la expulsa la corredera al bombear (UBLWeaponComponent)
+	{
+		EjectCasing(Data);
+	}
+}
+
+void UBLWeaponFXComponent::EjectCasing(const UBLWeaponData* Data)
+{
+	USkeletalMeshComponent* Mesh = WeaponMesh.Get();
 	// ---- Casquillo: sale hacia la derecha y arriba de la ventana de expulsión ----
-	if (Debris && Data->CasingMesh)
+	if (Mesh && Data && Debris && Data->CasingMesh)
 	{
 		const FTransform Eject = GetWeaponSocketTransform(Data->EjectSocket, Data->EjectLocalOffset) * Mesh->GetComponentTransform();
 		const FQuat Q = Eject.GetRotation();
@@ -211,9 +225,143 @@ void UBLWeaponFXComponent::PlayHandling(const UBLWeaponData* Data, float Volume)
 	}
 }
 
+namespace
+{
+	constexpr float MagGravity = 980.f;
+	/** Tiempo de caída con la proyección FP (el cargador ya ha salido de la vista por abajo). */
+	constexpr float MagFirstPersonTime = 0.22f;
+	constexpr int32 MaxDroppedMags = 6;
+}
+
+void UBLWeaponFXComponent::DropMagazine(const UBLWeaponData* Data, const FVector& Velocity)
+{
+	const USkeletalMeshComponent* Mesh = WeaponMesh.Get();
+	if (!Data || !Data->MagazineMesh || !Mesh || Mesh->GetBoneIndex(Data->MagazineBone) == INDEX_NONE)
+	{
+		return;
+	}
+	FFallingMag M;
+	M.Mesh = Data->MagazineMesh;
+	M.Sound = Data->MagazineDropSound;
+	M.Location = Mesh->GetSocketLocation(Data->MagazineBone);
+	M.Rotation = Mesh->GetComponentQuat();   // la malla suelta tiene los ejes del arma, con origen en el hueso
+	M.Velocity = Velocity;
+	M.AngularVelocity = Mesh->GetComponentQuat().RotateVector(FVector(FMath::FRandRange(-3.f, 3.f), FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(2.f, 5.f)));
+	const bool bFirstPerson = Mesh->FirstPersonPrimitiveType == EFirstPersonPrimitiveType::FirstPerson;
+	if (!bFirstPerson)
+	{
+		SpawnWorldMagazine(M);
+		return;
+	}
+	if (Debris)
+	{
+		UBLDebrisPoolComponent::FSpawnParams P;
+		P.Mesh = Data->MagazineMesh;
+		P.bFirstPerson = true;
+		P.Location = M.Location;
+		P.Rotation = M.Rotation;
+		P.Velocity = M.Velocity;
+		P.AngularVelocity = M.AngularVelocity;
+		P.Lifetime = MagFirstPersonTime;
+		P.Gravity = MagGravity;
+		P.Drag = 0.f;
+		P.bShrinkAtEnd = false;
+		Debris->Spawn(P);
+	}
+	M.HandOffTime = MagFirstPersonTime;
+	FallingMags.Add(M);
+}
+
+void UBLWeaponFXComponent::SpawnWorldMagazine(const FFallingMag& M)
+{
+	UStaticMesh* Mesh = M.Mesh.Get();
+	UWorld* World = GetWorld();
+	if (!Mesh || !World)
+	{
+		return;
+	}
+	// Misma balística que la partícula FP hasta el relevo
+	const float T = M.HandOffTime;
+	const FVector Loc = M.Location + M.Velocity * T + FVector(0.f, 0.f, -0.5f * MagGravity * T * T);
+	const FVector Vel = M.Velocity + FVector(0.f, 0.f, -MagGravity * T);
+	const float Spin = M.AngularVelocity.Size();
+	const FQuat Rot = Spin > KINDA_SMALL_NUMBER ? FQuat(M.AngularVelocity / Spin, Spin * T) * M.Rotation : M.Rotation;
+
+	FActorSpawnParameters SP;
+	SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(Loc, Rot.Rotator(), SP);
+	if (!Actor)
+	{
+		return;
+	}
+	Actor->Tags.Add(FName("BLDroppedMag"));
+	UStaticMeshComponent* C = Actor->GetStaticMeshComponent();
+	C->SetMobility(EComponentMobility::Movable);
+	C->SetStaticMesh(Mesh);
+	// Choca con el escenario y rueda, pero no estorba al jugador, a la cámara ni a las balas
+	C->SetCollisionProfileName(FName("PhysicsActor"));
+	C->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	C->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	C->SetCollisionResponseToChannel(ECC_BLWeapon, ECR_Ignore);
+	C->SetSimulatePhysics(true);
+	C->SetPhysicsLinearVelocity(Vel);
+	C->SetPhysicsAngularVelocityInRadians(M.AngularVelocity);
+	Actor->SetLifeSpan(60.f);
+	DroppedMags.Add(Actor);
+	while (DroppedMags.Num() > MaxDroppedMags)
+	{
+		if (AActor* Old = DroppedMags[0].Get())
+		{
+			Old->Destroy();
+		}
+		DroppedMags.RemoveAt(0);
+	}
+
+	// Golpe contra el suelo: cuándo y dónde llega (sin esperar al evento de físicas)
+	if (USoundBase* Sound = M.Sound.Get())
+	{
+		FHitResult Floor;
+		FCollisionQueryParams Q(SCENE_QUERY_STAT(BLMagDrop), false, GetOwner());
+		Q.AddIgnoredActor(Actor);
+		if (World->LineTraceSingleByChannel(Floor, Loc, Loc - FVector(0.f, 0.f, 400.f), ECC_Visibility, Q))
+		{
+			const float H = FMath::Max(Loc.Z - Floor.ImpactPoint.Z - 3.f, 0.f);
+			const float Vz = -Vel.Z;   // hacia abajo, positiva
+			const float Fall = (-Vz + FMath::Sqrt(Vz * Vz + 2.f * MagGravity * H)) / MagGravity;
+			const FVector Where = Floor.ImpactPoint;
+			FTimerHandle Handle;
+			World->GetTimerManager().SetTimer(Handle, FTimerDelegate::CreateWeakLambda(this, [this, Sound, Where]()
+			{
+				UGameplayStatics::PlaySoundAtLocation(this, Sound, Where, 0.8f, FMath::FRandRange(0.93f, 1.07f));
+			}), FMath::Max(Fall, 0.01f), false);
+		}
+	}
+}
+
+int32 UBLWeaponFXComponent::GetDroppedMagazineCount() const
+{
+	int32 N = 0;
+	for (const TWeakObjectPtr<AActor>& A : DroppedMags)
+	{
+		N += A.IsValid() ? 1 : 0;
+	}
+	return N;
+}
+
 void UBLWeaponFXComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	for (int32 i = FallingMags.Num() - 1; i >= 0; --i)
+	{
+		FFallingMag& M = FallingMags[i];
+		M.Age += DeltaTime;
+		if (M.Age >= M.HandOffTime)
+		{
+			SpawnWorldMagazine(M);
+			FallingMags.RemoveAtSwap(i);
+		}
+	}
 
 	TimeSinceShot += DeltaTime;
 	if (bTailPending && TimeSinceShot >= TailDelay)

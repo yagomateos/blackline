@@ -1,8 +1,11 @@
 #include "UI/BLHUD.h"
 
+#include "UI/BLMenuData.h"
+
 #include "Combat/BLHealthComponent.h"
 #include "Mission/BLCheckpointSubsystem.h"
 #include "Mission/BLInteractable.h"
+#include "Weapons/BLMountedGun.h"
 #include "Mission/BLMissionDirector.h"
 #include "Player/BLCharacter.h"
 #include "Weapons/BLWeaponComponent.h"
@@ -169,12 +172,13 @@ void ABLHUD::DrawAmmo(const ABLCharacter* Char)
 	// Contextual: aparece al disparar, recargar, apuntar o cambiar la munición; se atenúa a los 4 s
 	const float Dt = GetWorld()->GetDeltaSeconds();
 	AmmoAttention += Dt;
-	if (W->GetShotsFired() != LastShots || W->IsReloading() || W->GetMagazine() != LastMag || Char->IsAiming())
+	if (W->GetShotsFired() != LastShots || W->IsReloading() || W->GetMagazine() != LastMag || Char->IsAiming() || Char->GetGrenades() != LastGrenades)
 	{
 		AmmoAttention = 0.f;
 	}
 	LastShots = W->GetShotsFired();
 	LastMag = W->GetMagazine();
+	LastGrenades = Char->GetGrenades();
 	const bool bLow = W->GetMagazine() <= Data->MagazineSize / 4;
 	const float Target = (AmmoAttention < 4.f || bLow) ? 1.f : 0.28f;
 	AmmoAlpha = FMath::FInterpTo(AmmoAlpha, Target, Dt, AmmoAlpha < Target ? 12.f : 1.5f);
@@ -192,6 +196,14 @@ void ABLHUD::DrawAmmo(const ABLCharacter* Char)
 	const float Frac = float(W->GetMagazine()) / FMath::Max(Data->MagazineSize, 1);
 	Rect(FVector2D(X - BarW, Y + 44.f * S()), FVector2D(BarW, 2.f * S()), WithAlpha(FLinearColor(1, 1, 1, 0.18f), AmmoAlpha));
 	Rect(FVector2D(X - BarW, Y + 44.f * S()), FVector2D(BarW * FMath::Min(Frac, 1.f), 2.f * S()), WithAlpha(bLow ? Alert : Amber, AmmoAlpha));
+	// Granadas: un rombo por granada (rellenos = disponibles)
+	for (int32 i = 0; i < Char->GetMaxGrenades(); ++i)
+	{
+		const bool bHave = i < Char->GetGrenades();
+		const FVector2D P(X - 8.f * S() - i * 14.f * S(), Y + 56.f * S());
+		Rect(P, FVector2D(8.f * S(), 8.f * S()), WithAlpha(bHave ? Amber : FLinearColor(1, 1, 1, 0.15f), AmmoAlpha));
+	}
+	Text(TEXT("M-6"), FVector2D(X - 14.f * S() * Char->GetMaxGrenades() - 10.f * S(), Y + 52.f * S()), 11.f * S(), WithAlpha(Ink, 0.7f * AmmoAlpha), true, 1.f);
 
 	const FVector2D Center(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.5f + 64.f * S());
 	if (W->IsReloading())
@@ -223,7 +235,7 @@ void ABLHUD::DrawObjective(const ABLMissionDirector* Director)
 	const FVector2D P(FMath::Lerp(20.f, 52.f, In) * S(), 52.f * S());
 	Rect(P + FVector2D(-12.f * S(), 0.f), FVector2D(3.f * S(), 52.f * S()), WithAlpha(Amber, Alpha));
 	Text(FString::Printf(TEXT("OBJETIVO %02d/%02d"), Director->GetCurrentIndex() + 1, Director->Objectives.Num()), P, 13.f * S(), WithAlpha(Amber, Alpha), true);
-	Text(O->Text, P + FVector2D(0.f, 22.f * S()), 19.f * S(), WithAlpha(Ink, Alpha), false);
+	Text(Director->GetObjectiveDisplayText(), P + FVector2D(0.f, 22.f * S()), 19.f * S(), WithAlpha(Ink, Alpha), false);
 	if (Fresh > 0.01f && Age < 1.2f)
 	{
 		Text(TEXT("NUEVO"), P + FVector2D(Measure(FString::Printf(TEXT("OBJETIVO %02d/%02d"), 1, 1), 13.f * S(), true).X + 12.f * S(), 0.f), 13.f * S(),
@@ -384,12 +396,95 @@ void ABLHUD::DrawCheckpointNotice()
 	Text(TEXT("PUNTO DE CONTROL"), FVector2D(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.2f), 16.f * S(), WithAlpha(Amber, Alpha), true, 0.5f);
 }
 
+void ABLHUD::DrawPhotoFlash()
+{
+	const float Age = GetWorld()->GetTimeSeconds() - ABLInteractable::GetLastPhotoTime();
+	if (Age < 0.f || Age > 1.2f)
+	{
+		return;
+	}
+	// Destello blanco muy corto y, encima, el visor (esquinas y "FOTO n") que se desvanece
+	const float Flash = FMath::Clamp(1.f - Age / 0.18f, 0.f, 1.f);
+	if (Flash > 0.f)
+	{
+		Rect(FVector2D::ZeroVector, FVector2D(Canvas->ClipX, Canvas->ClipY), FLinearColor(1.f, 1.f, 1.f, 0.55f * Flash));
+	}
+	const float A = 1.f - FMath::SmoothStep(0.7f, 1.2f, Age);
+	const FLinearColor C = WithAlpha(Ink, A * 0.9f);
+	const float W = Canvas->ClipX * 0.3f, H = Canvas->ClipY * 0.28f, L = 34.f * S();
+	const FVector2D Ctr(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.5f);
+	for (int32 i = 0; i < 4; ++i)
+	{
+		const float SX = (i & 1) ? 1.f : -1.f, SY = (i & 2) ? 1.f : -1.f;
+		const FVector2D P(Ctr.X + SX * W, Ctr.Y + SY * H);
+		Line(P, P - FVector2D(SX * L, 0.f), C, 2.f * S());
+		Line(P, P - FVector2D(0.f, SY * L), C, 2.f * S());
+	}
+	Text(FString::Printf(TEXT("FOTO %d  ·  ENVIADA A TORRE"), ABLInteractable::GetPhotosTaken()), FVector2D(Ctr.X, Ctr.Y + H + 14.f * S()),
+		13.f * S(), WithAlpha(Amber, A), true, 0.5f);
+}
+
+void ABLHUD::DrawMountedGun(const ABLCharacter* Char)
+{
+	const ABLMountedGun* Gun = Char->GetMountedGun();
+	if (!Gun)
+	{
+		return;
+	}
+	const FVector2D C(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.5f);
+	const float R = 22.f * S();
+	const FLinearColor Col = Gun->IsOverheated() ? Alert : WithAlpha(Ink, 0.85f);
+	// Retícula de ametralladora: anillo partido + punto
+	for (int32 i = 0; i < 4; ++i)
+	{
+		const float A0 = HALF_PI * i + 0.35f, A1 = HALF_PI * (i + 1) - 0.35f;
+		for (int32 k = 0; k < 6; ++k)
+		{
+			const float T0 = FMath::Lerp(A0, A1, k / 6.f), T1 = FMath::Lerp(A0, A1, (k + 1) / 6.f);
+			Line(C + FVector2D(FMath::Cos(T0), FMath::Sin(T0)) * R, C + FVector2D(FMath::Cos(T1), FMath::Sin(T1)) * R, Col, 1.6f * S());
+		}
+	}
+	Rect(C - FVector2D(1.5f, 1.5f) * S(), FVector2D(3.f, 3.f) * S(), Col);
+	// Calor: barra abajo en el centro
+	const FVector2D BarPos(C.X - 110.f * S(), Canvas->ClipY - 70.f * S());
+	const FVector2D BarSize(220.f * S(), 6.f * S());
+	Rect(BarPos, BarSize, FLinearColor(0.f, 0.f, 0.f, 0.45f));
+	const float H = FMath::Clamp(Gun->GetHeat(), 0.f, 1.f);
+	Rect(BarPos, FVector2D(BarSize.X * H, BarSize.Y), FMath::Lerp(Amber, Alert, FMath::Clamp((H - 0.6f) / 0.4f, 0.f, 1.f)));
+	Text(Gun->IsOverheated() ? TEXT("SOBRECALENTADA") : TEXT("CALOR"), FVector2D(C.X, BarPos.Y - 20.f * S()), 11.f * S(),
+		Gun->IsOverheated() ? Alert : WithAlpha(Ink, 0.7f), true, 0.5f);
+	Text(TEXT("[F] Bajarse"), FVector2D(C.X, BarPos.Y + 16.f * S()), 11.f * S(), WithAlpha(Ink, 0.55f), true, 0.5f);
+}
+
+void ABLHUD::DrawAlarm(const ABLMissionDirector* Director)
+{
+	const float Age = Director ? Director->GetAlarmAge() : -1.f;
+	if (Age < 0.f || Age > 8.f)
+	{
+		return;
+	}
+	// Parpadea al saltar y se queda unos segundos
+	const float Blink = Age < 3.f ? (FMath::Fmod(Age, 0.5f) < 0.3f ? 1.f : 0.25f) : 1.f - FMath::SmoothStep(6.f, 8.f, Age);
+	Text(TEXT("ALARMA"), FVector2D(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.14f), 17.f * S(), WithAlpha(Alert, Blink), true, 0.5f);
+}
+
 void ABLHUD::DrawDeath(const ABLCharacter* Char)
 {
 	const float T = Char->GetDeathTime();
 	const float Alpha = FMath::Clamp((T - 0.6f) / 0.6f, 0.f, 1.f);
 	Text(TEXT("HAS CAÍDO"), FVector2D(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.44f), 30.f * S(), WithAlpha(Alert, Alpha), true, 0.5f);
 	Text(TEXT("Volviendo al último punto de control"), FVector2D(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.44f + 46.f * S()), 18.f * S(), WithAlpha(Ink, Alpha * 0.85f), false, 0.5f);
+}
+
+void ABLHUD::DrawMissionFailed(const ABLMissionDirector* Director)
+{
+	const float Age = Director->GetFailAge();
+	const float Fade = FMath::Clamp(Age / 0.8f, 0.f, 1.f);
+	Rect(FVector2D::ZeroVector, FVector2D(Canvas->ClipX, Canvas->ClipY), FLinearColor(0.02f, 0.005f, 0.005f, 0.8f * Fade));
+	const FVector2D C(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.42f);
+	Text(TEXT("MISIÓN FALLIDA"), C, 34.f * S(), WithAlpha(Alert, Fade), true, 0.5f);
+	Text(Director->GetFailReason(), C + FVector2D(0.f, 52.f * S()), 18.f * S(), WithAlpha(Ink, Fade * 0.9f), false, 0.5f);
+	Text(TEXT("Repitiendo desde la última fase..."), C + FVector2D(0.f, 90.f * S()), 12.f * S(), WithAlpha(Ink, Fade * 0.55f), true, 0.5f);
 }
 
 void ABLHUD::DrawMissionComplete(const ABLMissionDirector* Director)
@@ -407,7 +502,7 @@ void ABLHUD::DrawMissionComplete(const ABLMissionDirector* Director)
 	Rect(FVector2D(X - 24.f * S(), Y - 6.f * S()), FVector2D(3.f * S(), 330.f * S()), WithAlpha(Amber, A));
 	Text(TEXT("OPERACIÓN BLACKLINE  ·  KESSRA, 2031"), FVector2D(X, Y), 13.f * S(), WithAlpha(Amber, A), true);
 	Y += 26.f * S();
-	Text(TEXT("MISIÓN COMPLETADA"), FVector2D(X, Y), 38.f * S(), WithAlpha(Ink, A), true);
+	Text(Director->bCampaignFinale ? TEXT("FIN DE LA CAMPAÑA") : TEXT("MISIÓN COMPLETADA"), FVector2D(X, Y), 38.f * S(), WithAlpha(Ink, A), true);
 	Y += 58.f * S();
 	Text(Director->MissionName, FVector2D(X, Y), 20.f * S(), WithAlpha(Amber, A), false);
 	Y += 46.f * S();
@@ -432,7 +527,12 @@ void ABLHUD::DrawMissionComplete(const ABLMissionDirector* Director)
 	if (Age > 2.f)
 	{
 		const float Blink = 0.6f + 0.4f * FMath::Sin(Age * 3.f);
-		Text(TEXT("[F]  VOLVER A JUGAR"), FVector2D(X, Y + 20.f * S()), 15.f * S(), WithAlpha(Amber, Blink), true);
+		const int32 Next = Director->GetNextMissionIndex();
+		const FString Prompt = Next != INDEX_NONE
+			? FString::Printf(TEXT("[F]  SIGUIENTE MISIÓN · %s %s"), BLMenuData::Missions[Next].Code, BLMenuData::Missions[Next].Name)
+			: FString(TEXT("[F]  VOLVER AL MENÚ"));
+		Text(Prompt, FVector2D(X, Y + 20.f * S()), 15.f * S(), WithAlpha(Amber, Blink), true);
+		Text(TEXT("[ESC]  REINICIAR O SALIR"), FVector2D(X, Y + 48.f * S()), 12.f * S(), WithAlpha(FLinearColor(0.6f, 0.62f, 0.6f, 1.f), Blink), true);
 	}
 }
 
@@ -453,7 +553,14 @@ void ABLHUD::DrawHUD()
 		DrawMissionComplete(Director);
 		return;
 	}
+	if (Director && Director->IsMissionFailed())
+	{
+		DrawMissionFailed(Director);
+		return;
+	}
 	DrawCheckpointNotice();
+	DrawPhotoFlash();
+	DrawAlarm(Director);
 	DrawSubtitle(Director);
 	if (Char->IsDead())
 	{
@@ -464,6 +571,12 @@ void ABLHUD::DrawHUD()
 	DrawObjective(Director);
 	DrawMarker(Char, Director);
 	DrawDamageIndicators(Char);
+	if (Char->IsMounted())
+	{
+		DrawMountedGun(Char);
+		DrawHitMarker(Char);
+		return;
+	}
 	DrawCrosshair(Char, (1.f - Char->GetAimAlpha()) * (1.f - Char->GetSprintAlpha()) * (W && W->IsReloading() ? 0.4f : 1.f));
 	DrawHitMarker(Char);
 	DrawAmmo(Char);

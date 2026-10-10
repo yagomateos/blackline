@@ -72,6 +72,13 @@ public:
 	int32 GetShotsFired() const { return ShotsFired; }
 	int32 GetReloads() const { return Reloads; }
 	int32 GetFlanksDone() const { return FlanksDone; }
+	int32 GetGrenadeEscapes() const { return GrenadeEscapes; }
+	bool IsEscapingGrenade() const { return EscapeTime > 0.f; }
+	/** Carga de brecha (misión 3): unos segundos sin disparar ni moverse. */
+	void Stun(float Seconds);
+	bool IsStunned() const { return StunTime > 0.f; }
+	int32 GetGrenadesThrown() const { return GrenadesThrown; }
+	float GetSniperLock() const { return SniperLock; }
 	static const TCHAR* StateName(EBLAIState S);
 	static const TCHAR* ActionName(EBLCombatAction A);
 
@@ -118,6 +125,9 @@ private:
 	bool CheckLineOfSight() const;
 	void Bark(EBLBark Type, const TCHAR* Line);
 	void LookAround(float DeltaTime, float Range);
+	/** Granada cerca: grita y corre en dirección contraria. true mientras huye. */
+	bool TickGrenadeEscape(float DeltaTime);
+	void TickOperatorGrenade(float DeltaTime);
 
 	ABLEnemyCharacter* Enemy() const;
 	UBLSquadSubsystem* Squad() const;
@@ -135,6 +145,13 @@ private:
 	float TimeSinceSeen = 100.f;
 	float LosTimer = 0.f;
 	float Awareness = 0.f;
+	/** Multiplicador de visibilidad de noche (ABLNightSettings; 1 de día). */
+	float NightVisibility = 1.f;
+	float StunTime = 0.f;
+	float SniperLock = 0.f;
+	float GrenadeCooldown = 6.f;
+	int32 GrenadesLeft = 2;
+	int32 GrenadesThrown = 0;
 
 	// Patrulla y búsqueda
 	int32 PatrolIndex = 0;
@@ -166,4 +183,7 @@ private:
 	int32 ShotsFired = 0;
 	int32 Reloads = 0;
 	int32 FlanksDone = 0;
+	int32 GrenadeEscapes = 0;
+	float EscapeTime = 0.f;
+	TArray<TWeakObjectPtr<class ABLGrenade>> EscapedGrenades;
 };

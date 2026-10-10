@@ -3,10 +3,14 @@
 
 #include "Blackline.h"
 #include "AI/BLEnemyCharacter.h"
+#include "AI/BLVarek.h"
+#include "Environment/BLSmokeEmitter.h"
 #include "Combat/BLHealthComponent.h"
 #include "Mission/BLInteractable.h"
 #include "Mission/BLMissionDirector.h"
 #include "Player/BLCharacter.h"
+#include "Vehicles/BLBTR.h"
+#include "Vehicles/BLHelicopter.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -83,6 +87,10 @@ void UBLAutoTestComponent::BuildMissionTest()
 		{
 			for (TActorIterator<ABLInteractable> It(GetWorld()); It; ++It)
 			{
+				if (!It->Tags.Contains(FName("BLObjective_Disco")))
+				{
+					continue;
+				}
 				const FVector Disk = It->GetActorLocation();
 				const FVector From(Disk.X - 110.f, Disk.Y - 30.f, 0.f);
 				Place(From, (Disk - From).Rotation().Yaw, -32.f);
@@ -92,11 +100,182 @@ void UBLAutoTestComponent::BuildMissionTest()
 		[this](FString& D)
 		{
 			bool bUsed = false;
-			for (TActorIterator<ABLInteractable> It(GetWorld()); It; ++It) { bUsed |= It->IsUsed(); }
+			for (TActorIterator<ABLInteractable> It(GetWorld()); It; ++It) { bUsed |= It->IsUsed() && It->Tags.Contains(FName("BLObjective_Disco")); }
 			const ABLMissionDirector* M = ABLMissionDirector::Get(this);
-			D = FString::Printf(TEXT("disco recogido=%d, objetivos pendientes=%d"), bUsed, M && M->GetCurrentObjective() ? 1 : 0);
-			return bUsed && M && !M->GetCurrentObjective();
+			D = FString::Printf(TEXT("disco recogido=%d, objetivo %d"), bUsed, M ? M->GetCurrentIndex() + 1 : 0);
+			return bUsed && M && M->GetCurrentIndex() == 5;
 		}, [this]() { Char()->SetInteractHeld(false); }, 0.9f });
+
+	// ---- Bloque 11: bloque de viviendas y Varek ----
+	Steps.Add({ TEXT("Bloque"), 1.5f, [Place]() { Place(FVector(18410.f, 1500.f, 0.f), 180.f); }, nullptr,
+		[IndexIs](FString& D) { return IndexIs(6, D); } });
+
+	Steps.Add({ TEXT("Despeja"), 2.0f,
+		[this]()
+		{
+			for (TActorIterator<ABLEnemyCharacter> It(GetWorld()); It; ++It)
+			{
+				if (It->SquadId == FName("Bloque"))
+				{
+					FPointDamageEvent Ev(500.f, FHitResult(), FVector(1.f, 0.f, 0.f), nullptr);
+					It->TakeDamage(500.f, Ev, Char()->GetController(), Char());
+				}
+			}
+		}, nullptr,
+		[IndexIs](FString& D) { return IndexIs(7, D); } });
+
+	Steps.Add({ TEXT("Varek"), 3.0f,
+		[this, Place]()
+		{
+			for (TActorIterator<ABLVarek> It(GetWorld()); It; ++It)
+			{
+				const FVector V = It->GetActorLocation();
+				const FVector From(V.X + 120.f, V.Y + 20.f, 640.f);
+				Place(From, (V - From).Rotation().Yaw, -30.f);
+			}
+		},
+		[this](float T) { Char()->SetInteractHeld(T > 0.3f && T < 2.8f); },
+		[this](FString& D)
+		{
+			bool bFree = false;
+			for (TActorIterator<ABLVarek> It(GetWorld()); It; ++It) { bFree |= It->IsFree(); }
+			const ABLMissionDirector* M = ABLMissionDirector::Get(this);
+			D = FString::Printf(TEXT("Varek libre=%d, objetivo %d"), bFree, M ? M->GetCurrentIndex() + 1 : 0);
+			return bFree && M && M->GetCurrentIndex() == 8;   // empieza el contraataque
+		}, [this]() { Char()->SetInteractHeld(false); }, 2.9f });
+
+	Steps.Add({ TEXT("SigueJugador"), 5.0f, [Place]() { Place(FVector(18700.f, 2025.f, 640.f), 0.f); }, nullptr,
+		[this](FString& D)
+		{
+			float Dist = 1e9f;
+			for (TActorIterator<ABLVarek> It(GetWorld()); It; ++It) { Dist = FVector::Dist(It->GetActorLocation(), Char()->GetActorLocation()); }
+			D = FString::Printf(TEXT("Varek a %.0f cm del jugador"), Dist);
+			return Dist < 550.f;
+		}, nullptr, 4.5f });
+
+	// ---- Fase 7: contraataque (se simula la defensa eliminando a cada miliciano que llega) ----
+	TSharedRef<int32> MaxSmoke = MakeShared<int32>(0);
+	TSharedRef<int32> MaxWaves = MakeShared<int32>(0);
+	FStep Defend{ TEXT("Contraataque"), 130.0f,
+		[Place]() { Place(FVector(18200.f, 1420.f, 640.f), -90.f, -12.f); },   // ventana de la 2.ª planta que da a la calle
+		[this, MaxSmoke, MaxWaves](float T)
+		{
+			*MaxSmoke = FMath::Max(*MaxSmoke, ABLSmokeEmitter::GetActiveSmokeScreens());
+			if (const ABLMissionDirector* M = ABLMissionDirector::Get(this); M && M->GetCurrentIndex() == 8)
+			{
+				*MaxWaves = FMath::Max(*MaxWaves, M->GetWavesSpawned());
+			}
+			for (TActorIterator<ABLEnemyCharacter> It(GetWorld()); It; ++It)
+			{
+				// Les da 4 s de vida para que lancen el humo y se muevan
+				if (It->Tags.Contains(FName("BLWaveEnemy")) && !It->IsDead() && It->GetGameTimeSinceCreation() > 4.f)
+				{
+					FPointDamageEvent Ev(500.f, FHitResult(), FVector(1.f, 0.f, 0.f), nullptr);
+					It->TakeDamage(500.f, Ev, Char()->GetController(), Char());
+				}
+			}
+		},
+		nullptr, nullptr, 17.f };
+	Defend.Verify = [this, MaxSmoke, MaxWaves](FString& D)
+	{
+		const ABLMissionDirector* M = ABLMissionDirector::Get(this);
+		D = FString::Printf(TEXT("oleadas %d/3, humo visto %d nubes, objetivo %d"), *MaxWaves, *MaxSmoke, M ? M->GetCurrentIndex() + 1 : 0);
+		return M && *MaxWaves == 3 && *MaxSmoke >= 1 && M->GetCurrentIndex() == 9;
+	};
+	Defend.Done = [this]() { const ABLMissionDirector* M = ABLMissionDirector::Get(this); return M && M->GetCurrentIndex() >= 9; };
+	Steps.Add(Defend);
+
+	// ---- Fase 8: el blindado entra, dispara y derriba la fachada; se sube a la azotea y se cruza por los tejados ----
+	auto BTR = [this]() -> ABLBTR* { for (TActorIterator<ABLBTR> It(GetWorld()); It; ++It) { return *It; } return nullptr; };
+	FStep Armor{ TEXT("Blindado"), 50.0f,
+		[Place]() { Place(FVector(17400.f, 1420.f, 960.f), -170.f, -6.f); },   // azotea, al oeste del tramo que cae
+		nullptr,
+		[this, BTR, Director](FString& D)
+		{
+			const ABLBTR* B = BTR();
+			const ABLMissionDirector* M = Director();
+			int32 Blocks = 0;
+			for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+			{
+				Blocks += It->Tags.Contains(FName("BLCollapseBlock")) && !It->IsHidden() ? 1 : 0;
+			}
+			D = FString::Printf(TEXT("blindado activo=%d en posición=%d disparos=%d derrumbe=%d escombros visibles=%d, objetivo %d"),
+				B && B->IsActive(), B && B->HasArrived(), B ? B->GetShotsFired() : 0, B && B->HasCollapsed(), Blocks, M ? M->GetCurrentIndex() + 1 : 0);
+			return B && B->HasArrived() && B->GetShotsFired() >= 3 && B->HasCollapsed() && Blocks == 3 && M && M->GetCurrentIndex() == 10;
+		}, nullptr, 15.f };
+	Armor.Done = [BTR]() { const ABLBTR* B = BTR(); return B && B->GetShotsFired() >= 3; };
+	Steps.Add(Armor);
+	Steps.Add({ TEXT("Pasarela"), 2.0f, [Place]() { Place(FVector(19560.f, 2450.f, 960.f), 0.f, -8.f); }, nullptr,
+		[this](FString& D)
+		{
+			// La pasarela aguanta (no se cae al callejón) y se ve la azotea de C4
+			const float Z = Char()->GetActorLocation().Z - Char()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+			D = FString::Printf(TEXT("pies a %.0f cm"), Z);
+			return Z > 930.f;
+		}, nullptr, 1.2f });
+	Steps.Add({ TEXT("Incendios"), 1.5f, [Place]() { Place(FVector(21185.f, 1700.f, 0.f), 90.f); }, nullptr,
+		[IndexIs](FString& D) { return IndexIs(11, D); } });
+
+	// ---- Fase 9: zona de aterrizaje, defensa con el helicóptero y extracción ----
+	auto Heli = [this]() -> ABLHelicopter* { for (TActorIterator<ABLHelicopter> It(GetWorld()); It; ++It) { return *It; } return nullptr; };
+	Steps.Add({ TEXT("ZonaAterrizaje"), 1.5f, [Place]() { Place(FVector(25000.f, 1300.f, 0.f), 0.f); }, nullptr,
+		[IndexIs](FString& D) { return IndexIs(12, D); } });
+	TSharedRef<bool> SawHover = MakeShared<bool>(false);
+	TSharedRef<int32> MaxWavesLZ = MakeShared<int32>(0);
+	FStep DefendLZ{ TEXT("DefensaLZ"), 120.0f,
+		[Place]() { Place(FVector(23000.f, 1500.f, 0.f), -6.f, 22.f); },
+		[this, Heli, SawHover, MaxWavesLZ](float T)
+		{
+			const ABLHelicopter* H = Heli();
+			*SawHover |= H && H->IsHovering();
+			if (const ABLMissionDirector* M = ABLMissionDirector::Get(this); M && M->GetCurrentIndex() == 12)
+			{
+				*MaxWavesLZ = FMath::Max(*MaxWavesLZ, M->GetWavesSpawned());
+			}
+			for (TActorIterator<ABLEnemyCharacter> It(GetWorld()); It; ++It)
+			{
+				// Con el helicóptero en estacionario los deja vivir 14 s (que dispare el ametrallador); antes, 4 s
+				const float Grace = H && H->IsHovering() ? 14.f : 4.f;
+				if (It->Tags.Contains(FName("BLWaveEnemy")) && !It->IsDead() && It->GetGameTimeSinceCreation() > Grace)
+				{
+					FPointDamageEvent Ev(500.f, FHitResult(), FVector(1.f, 0.f, 0.f), nullptr);
+					It->TakeDamage(500.f, Ev, Char()->GetController(), Char());
+				}
+			}
+		},
+		nullptr, nullptr, 40.f };
+	DefendLZ.Verify = [Director, Heli, SawHover, MaxWavesLZ](FString& D)
+	{
+		const ABLMissionDirector* M = Director();
+		const ABLHelicopter* H = Heli();
+		D = FString::Printf(TEXT("oleadas %d/3, helicóptero activo=%d estacionario visto=%d ráfagas=%d, objetivo %d"),
+			*MaxWavesLZ, H && H->IsActive(), *SawHover, H ? H->GetBurstsFired() : 0, M ? M->GetCurrentIndex() + 1 : 0);
+		return M && M->GetCurrentIndex() == 13 && H && *SawHover && *MaxWavesLZ == 3 && H->GetBurstsFired() >= 1;
+	};
+	DefendLZ.Done = [Director]() { return Director() && Director()->GetCurrentIndex() >= 13; };
+	Steps.Add(DefendLZ);
+	FStep Board{ TEXT("Helicoptero"), 40.0f,
+		[Place]() { Place(FVector(24300.f, 300.f, 0.f), 55.f, 4.f); },
+		[this, Heli](float T)
+		{
+			const ABLHelicopter* H = Heli();
+			for (TActorIterator<ABLInteractable> It(GetWorld()); It && H && H->IsLanded() && T > 2.f; ++It)
+			{
+				if (It->Tags.Contains(FName("BLObjective_Heli")) && It->CanInteract(Char()))
+				{
+					It->Use(Char());
+				}
+			}
+		},
+		[Director, Heli](FString& D)
+		{
+			const ABLMissionDirector* M = Director();
+			const ABLHelicopter* H = Heli();
+			D = FString::Printf(TEXT("en tierra=%d, objetivos pendientes=%d"), H && H->IsLanded(), M && M->GetCurrentObjective() ? 1 : 0);
+			return H && H->IsLanded() && M && !M->GetCurrentObjective();
+		}, nullptr, -1.f };
+	Board.Done = [Director]() { return Director() && !Director()->GetCurrentObjective(); };
+	Steps.Add(Board);
 
 	FStep Done{ TEXT("Completada"), 60.0f, nullptr, nullptr,
 		[Director](FString& D)

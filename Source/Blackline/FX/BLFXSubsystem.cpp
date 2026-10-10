@@ -370,3 +370,100 @@ void UBLFXSubsystem::Tick(float DeltaTime)
 	UpdateSprites(DeltaTime, View);
 	UpdateSparks(DeltaTime, View);
 }
+
+void UBLFXSubsystem::SpawnExplosion(const FVector& Location, const FVector& GroundNormal, const FBLSurfaceEffect* Surface)
+{
+	EnsureActor();
+	const FVector N = GroundNormal.IsNearlyZero() ? FVector::UpVector : GroundNormal.GetSafeNormal();
+	const FLinearColor Dust = Surface ? Surface->DustColor : FLinearColor(0.5f, 0.47f, 0.42f);
+	// Destello caliente: pocos sprites brillantes y muy breves
+	for (int32 i = 0; i < 4; ++i)
+	{
+		FSprite S;
+		S.Location = Location + FMath::VRand() * 20.f;
+		S.Velocity = FMath::VRand() * 200.f;
+		S.Life = FMath::FRandRange(0.12f, 0.2f);
+		S.StartSize = 120.f;
+		S.EndSize = FMath::FRandRange(260.f, 360.f);
+		S.Opacity = 1.f;
+		S.Drag = 6.f;
+		S.Frame = float(FMath::RandRange(0, 3));
+		S.Roll = FMath::FRandRange(0.f, 2.f * PI);
+		S.Color = FLinearColor(1.f, 0.62f, 0.3f) * 6.f;
+		AddSprite(S);
+	}
+	// Bola de polvo y humo que crece, sube y se queda flotando
+	for (int32 i = 0; i < 18; ++i)
+	{
+		FSprite S;
+		const FVector Dir = FMath::VRandCone(N, FMath::DegreesToRadians(75.f));
+		S.Location = Location + Dir * FMath::FRandRange(0.f, 60.f);
+		S.Velocity = Dir * FMath::FRandRange(250.f, 900.f);
+		S.Life = FMath::FRandRange(3.5f, 7.f);
+		S.StartSize = FMath::FRandRange(60.f, 140.f);
+		S.EndSize = FMath::FRandRange(380.f, 700.f);
+		S.Opacity = FMath::FRandRange(0.6f, 0.9f);
+		S.Drag = 2.8f;
+		S.Rise = FMath::FRandRange(20.f, 45.f);
+		S.Frame = float(FMath::RandRange(0, 3));
+		S.Spin = FMath::FRandRange(-0.4f, 0.4f);
+		S.Roll = FMath::FRandRange(0.f, 2.f * PI);
+		const float Dark = FMath::FRandRange(0.35f, 0.75f);
+		S.Color = FLinearColor(Dust.R * Dark, Dust.G * Dark, Dust.B * Dark);
+		AddSprite(S);
+	}
+	// Chorros de tierra/cascotes hacia arriba
+	for (int32 i = 0; i < 10; ++i)
+	{
+		FSprite S;
+		const FVector Dir = FMath::VRandCone(N, FMath::DegreesToRadians(35.f));
+		S.Location = Location;
+		S.Velocity = Dir * FMath::FRandRange(1200.f, 2200.f);
+		S.Life = FMath::FRandRange(0.6f, 1.1f);
+		S.StartSize = 30.f;
+		S.EndSize = FMath::FRandRange(120.f, 200.f);
+		S.Opacity = 1.f;
+		S.Drag = 4.5f;
+		S.Rise = -400.f;
+		S.Frame = float(FMath::RandRange(0, 3));
+		S.Roll = FMath::FRandRange(0.f, 2.f * PI);
+		S.Color = Dust * 0.8f;
+		AddSprite(S);
+	}
+	for (int32 i = 0; i < 48; ++i)
+	{
+		FSpark S;
+		S.Location = Location;
+		S.Velocity = FMath::VRandCone(N, FMath::DegreesToRadians(80.f)) * FMath::FRandRange(900.f, 2600.f);
+		S.Life = FMath::FRandRange(0.15f, 0.6f);
+		S.Intensity = FMath::FRandRange(0.7f, 1.2f);
+		S.Color = FLinearColor(1.f, 0.55f, 0.18f);
+		AddSpark(S);
+	}
+	if (Debris && Surface && Surface->DebrisMesh)
+	{
+		for (int32 i = 0; i < 16; ++i)
+		{
+			UBLDebrisPoolComponent::FSpawnParams D;
+			D.Mesh = Surface->DebrisMesh;
+			D.Location = Location + N * 10.f;
+			D.Rotation = FMath::VRand().ToOrientationQuat();
+			D.Velocity = FMath::VRandCone(N, FMath::DegreesToRadians(60.f)) * FMath::FRandRange(500.f, 1300.f);
+			D.AngularVelocity = FMath::VRand() * FMath::FRandRange(10.f, 35.f);
+			D.Lifetime = FMath::FRandRange(2.f, 4.f);
+			D.Scale = FMath::FRandRange(1.f, 2.5f);
+			Debris->Spawn(D);
+		}
+	}
+	// Marca de quemado (la de impacto de la superficie, grande y oscurecida por su propio material)
+	if (Surface && Surface->Decal)
+	{
+		FRotator Rot = (-N).Rotation();
+		Rot.Roll = FMath::FRandRange(-180.f, 180.f);
+		if (UDecalComponent* D = UGameplayStatics::SpawnDecalAtLocation(this, Surface->Decal, FVector(40.f, 130.f, 130.f), Location, Rot, DecalLifetime * 2.f))
+		{
+			D->SetFadeScreenSize(0.0004f);
+			Decals.Add(D);
+		}
+	}
+}

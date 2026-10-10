@@ -16,7 +16,10 @@ az = math.radians(float(argv[2])) if len(argv) > 2 else math.radians(35)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.fbx(filepath=src)
-objs = [o for o in bpy.context.scene.objects if o.type == 'MESH']
+objs = [o for o in bpy.context.scene.objects if o.type == 'MESH' and not o.name.startswith('UCX_')]
+for o in bpy.context.scene.objects:
+    if o.name.startswith('UCX_'):
+        o.hide_render = True   # colisiones: no se ven
 
 mn = Vector((1e9, 1e9, 1e9))
 mx = Vector((-1e9, -1e9, -1e9))

@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Player/BLSpring.h"
+#include "Weapons/BLWeaponData.h"
 #include "BLFirstPersonRigComponent.generated.h"
 
 class ABLCharacter;
@@ -38,6 +39,8 @@ public:
 
 	/** Mira del arma equipada: socket (solo se usa su posición) o desplazamiento, y eje adelante de la malla. */
 	void ConfigureWeaponSight(FName InSightSocket, const FVector& InSightLocalOffset, const FVector& InForwardAxis, float InAimDistance);
+	/** Poses de cadera/sprint/mantle/recarga/equipar del arma equipada. */
+	void ConfigureWeaponPoses(const FBLWeaponPoses& InPoses) { Poses = InPoses; }
 
 	/** Cada disparo: temblor de cámara de alta frecuencia y golpe de FOV (además del retroceso). */
 	void NotifyShot(float Strength);
@@ -89,24 +92,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Rig|Aim") FVector WeaponForwardAxis = FVector(0.f, 1.f, 0.f);
 	/** Distancia ojo-mira en ADS (cm). */
 	UPROPERTY(EditAnywhere, Category = "Rig|Aim") float AimDistance = 14.f;
-	/** Distancia ojo-mira con la que se ajustaron las poses de cadera/sprint/mantle/equipar (así no cambian al variar AimDistance). */
-	UPROPERTY(EditAnywhere, Category = "Rig|Aim") float PoseReferenceAimDistance = 9.f;
 
-	// ---- Poses del arma: desplazamientos en espacio de cámara respecto a la pose ADS ----
-	// Las rotaciones pivotan sobre el punto de mira, no sobre el ojo.
-	UPROPERTY(EditAnywhere, Category = "Rig|Poses") FVector HipLocation = FVector(8.f, 4.5f, -2.5f);
-	UPROPERTY(EditAnywhere, Category = "Rig|Poses") FRotator HipRotation = FRotator(0.5f, -5.5f, -4.f);
-	UPROPERTY(EditAnywhere, Category = "Rig|Poses") FVector SprintLocation = FVector(7.f, 5.f, -4.f);
-	UPROPERTY(EditAnywhere, Category = "Rig|Poses") FRotator SprintRotation = FRotator(1.f, -20.f, -28.f);
-	UPROPERTY(EditAnywhere, Category = "Rig|Poses") FVector MantleLocation = FVector(-3.f, 2.f, -4.f);
-	UPROPERTY(EditAnywhere, Category = "Rig|Poses") FRotator MantleRotation = FRotator(-10.f, -10.f, -20.f);
-	/** Recarga (pose absoluta en espacio de cámara): posición del pistolete y orientación del arma
-	 *  (Yaw<0 cañón a la izquierda, Pitch>0 cañón arriba, Roll<0 parte de arriba hacia la izquierda). */
-	UPROPERTY(EditAnywhere, Category = "Rig|Poses") FVector ReloadGripLocation = FVector(46.f, 9.f, -12.f);
-	UPROPERTY(EditAnywhere, Category = "Rig|Poses") FRotator ReloadRotation = FRotator(20.f, -20.f, 40.f);
-	/** Equipar: el arma sube desde abajo. */
-	UPROPERTY(EditAnywhere, Category = "Rig|Poses") FVector EquipLocation = FVector(0.f, 4.f, -22.f);
-	UPROPERTY(EditAnywhere, Category = "Rig|Poses") FRotator EquipRotation = FRotator(-35.f, -10.f, 20.f);
+	// ---- Poses del arma (las de cada arma, FBLWeaponPoses en su UBLWeaponData; por defecto las del AR-7) ----
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rig|Poses") FBLWeaponPoses Poses;
 
 	// ---- Bob (balanceo al andar) ----
 	UPROPERTY(EditAnywhere, Category = "Rig|Bob") float WalkStride = 150.f;   // cm por paso

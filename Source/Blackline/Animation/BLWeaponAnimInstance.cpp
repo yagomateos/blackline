@@ -9,6 +9,14 @@
 // Instancia (hilo de juego)
 // ---------------------------------------------------------------------------
 
+namespace
+{
+	// Bombeo de la corredera (fracciones del ciclo); los sonidos del arma (CycleSounds) van a juego
+	constexpr float PumpBackStart = 0.18f;
+	constexpr float PumpBackEnd = 0.45f;
+	constexpr float PumpForwardEnd = 0.75f;
+}
+
 UBLWeaponComponent* UBLWeaponAnimInstance::FindWeaponComponent() const
 {
 	const USkeletalMeshComponent* Comp = GetSkelMeshComponent();
@@ -32,30 +40,44 @@ void UBLWeaponAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	// Nuevo disparo: empieza un ciclo del cerrojo (más corto si la cadencia no da tiempo)
 	const int32 Shots = Weapon->GetShotsFired();
+	const bool bPump = Data->FireMode == EBLFireMode::Pump;
 	if (LastShotsFired != INDEX_NONE && Shots != LastShotsFired)
 	{
 		CycleTime = 0.f;
-		CycleDuration = FMath::Min(Data->BoltCycleTime, Data->GetShotInterval() * 0.95f);
+		// Corredera: el bombeo ocupa casi todo el intervalo entre disparos (no hay muelle que lo acorte)
+		CycleDuration = bPump ? Data->GetShotInterval() * 0.92f : FMath::Min(Data->BoltCycleTime, Data->GetShotInterval() * 0.95f);
 	}
 	LastShotsFired = Shots;
 	CycleTime += DeltaSeconds;
 
 	// Cerrojo abierto: cargador vacío y sin recámara; en la recarga en vacío se suelta al golpear la retenida
+	// (corredera: la escopeta vacía se queda con el guardamanos atrás tras el último bombeo)
+	const float OpenAt = bPump ? PumpBackEnd : 0.35f;
 	if (Weapon->IsReloading())
 	{
-		bLockedOpen = Weapon->IsReloadEmpty() && Weapon->GetReloadProgress() < Data->BoltReleaseTime;
+		bLockedOpen = Weapon->IsReloadActionOpen();
 	}
 	else
 	{
-		bLockedOpen = Weapon->GetMagazine() == 0 && CycleTime >= CycleDuration * 0.35f;
+		bLockedOpen = Weapon->GetMagazine() == 0 && CycleTime >= CycleDuration * OpenAt;
 	}
 
-	// Ciclo: retrocede rápido (35 %) y vuelve empujado por el muelle
 	float Cycle = 0.f;
 	if (CycleTime < CycleDuration)
 	{
 		const float T = CycleTime / CycleDuration;
-		Cycle = T < 0.35f ? FMath::Sin(HALF_PI * T / 0.35f) : 1.f - FMath::Square((T - 0.35f) / 0.65f);
+		if (bPump)
+		{
+			// Bombeo a mano: espera a que pase el retroceso, atrás con decisión y adelante algo más rápido
+			Cycle = T < PumpBackStart ? 0.f
+				: T < PumpBackEnd ? FMath::SmoothStep(PumpBackStart, PumpBackEnd, T)
+				: 1.f - FMath::SmoothStep(PumpBackEnd + 0.04f, PumpForwardEnd, T);
+		}
+		else
+		{
+			// Ciclo: retrocede rápido (35 %) y vuelve empujado por el muelle
+			Cycle = T < 0.35f ? FMath::Sin(HALF_PI * T / 0.35f) : 1.f - FMath::Square((T - 0.35f) / 0.65f);
+		}
 	}
 	if (bLockedOpen)
 	{

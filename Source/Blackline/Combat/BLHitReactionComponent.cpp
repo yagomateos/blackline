@@ -58,7 +58,14 @@ void UBLHitReactionComponent::HandleDamaged(const FBLDamageInfo& Info)
 	}
 	Weight = 1.f;
 	Mesh->SetAllBodiesBelowPhysicsBlendWeight(ReactionRootBone, Weight, false, true);
-	const FName Bone = Info.Bone.IsNone() ? ReactionRootBone : Info.Bone;
+	// Solo simulan los huesos desde ReactionRootBone hacia arriba: un tiro en la cadera o en las piernas empuja el
+	// tronco desde abajo (antes el impulso se perdía: "has to have Simulate Physics enabled")
+	FName Bone = Info.Bone.IsNone() ? ReactionRootBone : Info.Bone;
+	const FBodyInstance* Body = Mesh->GetBodyInstance(Bone);
+	if (!Body || !Body->IsInstanceSimulatingPhysics())
+	{
+		Bone = ReactionRootBone;
+	}
 	if (Mesh->GetBodyInstance(Bone))
 	{
 		Mesh->AddImpulseAtLocation(Info.Direction * Info.Amount * ImpulsePerDamage, Info.Location, Bone);

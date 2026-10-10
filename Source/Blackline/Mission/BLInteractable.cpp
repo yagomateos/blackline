@@ -8,6 +8,9 @@
 #include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
 
+float ABLInteractable::LastPhotoTime = -100.f;
+int32 ABLInteractable::PhotosTaken = 0;
+
 ABLInteractable::ABLInteractable()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -22,6 +25,14 @@ ABLInteractable::ABLInteractable()
 	}
 }
 
+void ABLInteractable::BeginPlay()
+{
+	Super::BeginPlay();
+	// Nivel nuevo: el reloj del mundo vuelve a 0
+	LastPhotoTime = -100.f;
+	PhotosTaken = 0;
+}
+
 void ABLInteractable::Use(ABLCharacter* User)
 {
 	if (!CanInteract(User))
@@ -29,6 +40,11 @@ void ABLInteractable::Use(ABLCharacter* User)
 		return;
 	}
 	bUsed = true;
+	if (bPhoto)
+	{
+		LastPhotoTime = GetWorld()->GetTimeSeconds();
+		++PhotosTaken;
+	}
 	if (UseSound)
 	{
 		UGameplayStatics::PlaySound2D(this, UseSound);

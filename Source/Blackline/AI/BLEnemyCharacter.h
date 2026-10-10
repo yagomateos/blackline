@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Weapons/BLWeaponOwner.h"
+#include "Mission/BLActivatable.h"
 #include "BLEnemyCharacter.generated.h"
 
 class UBLHealthComponent;
@@ -11,7 +12,25 @@ class UBLWeaponComponent;
 class UAnimSequence;
 class UAudioComponent;
 class UBLSurfaceEffectsData;
+class USpotLightComponent;
+class UMaterialInterface;
+class UStaticMesh;
 struct FBLDamageInfo;
+
+/** Papel del miliciano (misión 2): fusilero normal o tirador de supresión con ametralladora. */
+UENUM(BlueprintType)
+enum class EBLEnemyRole : uint8
+{
+	Rifleman,
+	/** Ametralladora: ráfagas largas, más vida, no flanquea ni persigue; sigue tirando a tu última posición. */
+	Gunner,
+	/** Operador de Corvane (misión 3): blindado, mejor puntería, flanquea y lanza granadas de fragmentación. */
+	Operator,
+	/** Tirador de Corvane (misión 3): fijo en su puesto, láser visible, tarda en fijar y dispara fuerte. */
+	Sniper,
+	/** Soldado del ejército de Varania (misión 4, aliado): lo lleva ABLAllyController; uniforme del ejército. */
+	Ally,
+};
 
 /**
  * Miliciano de la Columna Vesk (Bloque 5). Cuerpo Mannequin con uniforme propio (provisional, Bloque 8),
@@ -20,7 +39,7 @@ struct FBLDamageInfo;
  * hacia dónde apunta y la animación (UBLEnemyAnimInstance, en C++).
  */
 UCLASS()
-class BLACKLINE_API ABLEnemyCharacter : public ACharacter, public IBLWeaponOwner
+class BLACKLINE_API ABLEnemyCharacter : public ACharacter, public IBLWeaponOwner, public IBLActivatable
 {
 	GENERATED_BODY()
 
@@ -41,6 +60,14 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Enemy|Audio") int32 VoiceIndex = -1;
 	/** Volumen de los pasos (andando; al trotar suenan más). Delatan al enemigo cercano. */
 	UPROPERTY(EditAnywhere, Category = "Enemy|Audio") float FootstepVolume = 0.75f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy") EBLEnemyRole EnemyRole = EBLEnemyRole::Rifleman;
+	/** Linterna en el arma (noche): se ve venir de lejos y ve mejor donde apunta (ABLNightSettings). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy") bool bFlashlight = false;
+	/** Aliado que acompaña al jugador (misión 5: Sable 2-2 y 2-3) en vez de quedarse en su puesto. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy") bool bFollowPlayer = false;
+
+	/** Los objetivos pueden despertar a un personaje (su etiqueta en ActivateTags): se lo pasa a su controlador. */
+	virtual void OnMissionActivate(FName Tag) override;
 
 	// ---- Órdenes del controlador ----
 	/** Punto al que apunta el arma (con el error de puntería ya aplicado) y si está en guardia/apuntando. */
@@ -67,6 +94,16 @@ public:
 	/** Frase que está diciendo (se corta si muere). */
 	void SetVoiceComponent(UAudioComponent* Component);
 	int32 GetFootstepsPlayed() const { return FootstepsPlayed; }
+	bool IsGunner() const { return EnemyRole == EBLEnemyRole::Gunner; }
+	bool IsOperator() const { return EnemyRole == EBLEnemyRole::Operator; }
+	bool IsSniper() const { return EnemyRole == EBLEnemyRole::Sniper; }
+	/** No dejan su puesto (no buscan cobertura, no persiguen, no flanquean). */
+	bool IsStatic() const { return EnemyRole == EBLEnemyRole::Gunner || EnemyRole == EBLEnemyRole::Sniper; }
+	/** Corvane: ropa y equipo propios, barks en inglés. */
+	bool IsCorvane() const { return EnemyRole == EBLEnemyRole::Operator || EnemyRole == EBLEnemyRole::Sniper; }
+	bool IsLaserOn() const;
+	/** La linterna si la lleva encendida (null si no). */
+	USpotLightComponent* GetFlashlight() const;
 
 	// ---- IBLWeaponOwner ----
 	virtual void GetWeaponAimView(FVector& OutOrigin, FVector& OutDirection) const override;
@@ -94,10 +131,24 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components") TObjectPtr<UStaticMeshComponent> Vest;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components") TObjectPtr<UStaticMeshComponent> Helmet;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components") TObjectPtr<UStaticMeshComponent> Armband;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (ScriptName = "FlashlightSpot")) TObjectPtr<USpotLightComponent> Flashlight;
+	/** Láser del tirador: caja fina emisiva del cañón al punto donde apunta. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components") TObjectPtr<UStaticMeshComponent> Laser;
+	UPROPERTY() TObjectPtr<UMaterialInterface> CorvaneBody;
+	UPROPERTY() TObjectPtr<UMaterialInterface> CorvaneSleeves;
+	UPROPERTY() TObjectPtr<UStaticMesh> CorvaneHelmet;
+	UPROPERTY() TObjectPtr<UStaticMesh> CorvaneVest;
+	UPROPERTY() TObjectPtr<UMaterialInterface> ArmyBody;
+	UPROPERTY() TObjectPtr<UMaterialInterface> ArmySleeves;
 
 private:
+	/** Arma original (antes de las variantes por rol) que queda en el suelo al morir, para recogerla o coger su munición. */
+	UPROPERTY() TObjectPtr<UBLWeaponData> DropWeaponData;
+	void SpawnWeaponPickup(int32 Magazine);
+
 	UFUNCTION() void HandleDeath(const FBLDamageInfo& Info);
 	void TickFootsteps(float DeltaTime);
+	void TickLaser();
 	/** Coloca una pieza modelada en el espacio de la malla (pose de referencia) sobre su hueso. */
 	void FitGearToBone(UStaticMeshComponent* Piece, FName Bone);
 	/** Sonido de la superficie bajo el personaje (pasos, caída del cuerpo). */

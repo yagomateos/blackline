@@ -44,10 +44,35 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Fire") FVector FireExtent = FVector(120.f, 60.f, 10.f);
 	UPROPERTY(EditAnywhere, Category = "Fire") float FlameSize = 90.f;
 	UPROPERTY(EditAnywhere, Category = "Fire") float LightIntensity = 9000.f;
+	/** Alcance de la luz del fuego (la antorcha de la refinería ilumina medio nivel). */
+	UPROPERTY(EditAnywhere, Category = "Fire") float FireLightRadius = 1300.f;
+	/** Daño por segundo a quien está dentro de las llamas (jugador y enemigos; 0 = no quema). Caja: FireExtent más
+	 *  FireDamageMargin en horizontal y hasta 1,8 m de alto. */
+	UPROPERTY(EditAnywhere, Category = "Fire") float FireDamagePerSecond = 40.f;
+	UPROPERTY(EditAnywhere, Category = "Fire") float FireDamageMargin = 45.f;
+	/** Daño de fuego hecho (pruebas). */
+	float GetFireDamageDealt() const { return FireDamageDealt; }
 
 	int32 GetAliveParticles() const;
 
+	/** Cortina de humo (granada): densa, baja, emite SpawnDuration segundos y tapa la visión de la IA. */
+	void ConfigureSmokeScreen();
+	/** true si el segmento atraviesa alguna nube que tapa la vista. */
+	static bool BlocksSight(const FVector& From, const FVector& To);
+	static int32 GetActiveSmokeScreens();
+
+	/** Segundos emitiendo (0 = siempre). Al acabar y apagarse las partículas, el actor se destruye. */
+	UPROPERTY(EditAnywhere, Category = "Smoke") float SpawnDuration = 0.f;
+	/** Radio (cm) en el que la nube tapa la vista de la IA (0 = no tapa). */
+	UPROPERTY(EditAnywhere, Category = "Smoke") float SightBlockRadius = 0.f;
+
+protected:
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+
 private:
+	float Age = 0.f;
+	static TArray<TWeakObjectPtr<ABLSmokeEmitter>> SightBlockers;
+
 	struct FPuff
 	{
 		FVector Location;
@@ -64,6 +89,9 @@ private:
 	};
 
 	void SpawnPuff(bool bPrewarm);
+	void ApplyFireDamage(float DeltaTime);
+	float FireDamageTimer = 0.f;
+	float FireDamageDealt = 0.f;
 	void SpawnFlame();
 	void UpdateSprites(TArray<FPuff>& List, UInstancedStaticMeshComponent* ISM, float DeltaTime, const FVector& View, bool bFlames);
 

@@ -110,7 +110,7 @@ void SBLPauseMenu::ShowOptions(bool bShow)
 FReply SBLPauseMenu::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
 {
 	const FKey K = InKeyEvent.GetKey();
-	if (K == EKeys::Escape || K == EKeys::Gamepad_FaceButton_Right || K == EKeys::Gamepad_Special_Right || K == EKeys::Virtual_Back)
+	if (K == EKeys::Escape || K == EKeys::Gamepad_FaceButton_Right || K == EKeys::Gamepad_Special_Right || K == EKeys::Virtual_Gamepad_Back.GetVirtualKey())
 	{
 		if (bOptions)
 		{

@@ -11,8 +11,10 @@
 #include "FX/BLSurfaceEffects.h"
 #include "Weapons/BLWeaponComponent.h"
 #include "Weapons/BLWeaponData.h"
+#include "Weapons/BLWeaponPickup.h"
 
 #include "Components/AudioComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "AnimationRuntime.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -73,6 +75,38 @@ ABLEnemyCharacter::ABLEnemyCharacter(const FObjectInitializer& ObjectInitializer
 	Helmet = MakeGear(TEXT("Helmet"), TEXT("/Game/Characters/Enemy/Gear/SM_Militia_Helmet.SM_Militia_Helmet"), FName("head"));
 	Armband = MakeGear(TEXT("Armband"), TEXT("/Game/Characters/Enemy/Gear/SM_Militia_Armband.SM_Militia_Armband"), FName("upperarm_l"));
 
+	// Linterna bajo el guardamanos (el arma mira a +Y): apagada salvo con bFlashlight
+	Flashlight = CreateDefaultSubobject<USpotLightComponent>(TEXT("Flashlight"));
+	Flashlight->SetupAttachment(WeaponMesh);
+	Flashlight->SetRelativeLocationAndRotation(FVector(0.f, 48.f, 2.f), FRotator(0.f, 90.f, 0.f));
+	Flashlight->SetIntensityUnits(ELightUnits::Candelas);
+	Flashlight->SetIntensity(320.f);
+	Flashlight->SetAttenuationRadius(3200.f);
+	Flashlight->SetInnerConeAngle(9.f);
+	Flashlight->SetOuterConeAngle(24.f);
+	Flashlight->SetLightColor(FLinearColor(1.f, 0.95f, 0.85f));
+	Flashlight->SetCastShadows(false);
+	Flashlight->SetVolumetricScatteringIntensity(2.f);   // el haz se ve en la niebla
+	Flashlight->SetVisibility(false);
+
+	Laser = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Laser"));
+	Laser->SetupAttachment(RootComponent);
+	Laser->SetStaticMesh(LoadDefault<UStaticMesh>(TEXT("/Engine/BasicShapes/Cube.Cube")));
+	Laser->SetMaterial(0, LoadDefault<UMaterialInterface>(TEXT("/Game/Characters/Enemy/Materials/MI_Laser_Red.MI_Laser_Red")));
+	Laser->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Laser->SetCastShadow(false);
+	Laser->SetCanEverAffectNavigation(false);
+	Laser->SetUsingAbsoluteLocation(true);
+	Laser->SetUsingAbsoluteRotation(true);
+	Laser->SetUsingAbsoluteScale(true);
+	Laser->SetVisibility(false);
+	CorvaneBody = LoadDefault<UMaterialInterface>(TEXT("/Game/Characters/Enemy/Materials/MI_Corvane_Body.MI_Corvane_Body"));
+	CorvaneSleeves = LoadDefault<UMaterialInterface>(TEXT("/Game/Characters/Enemy/Materials/MI_Corvane_Sleeves.MI_Corvane_Sleeves"));
+	CorvaneHelmet = LoadDefault<UStaticMesh>(TEXT("/Game/Characters/Enemy/Gear/SM_Corvane_Helmet.SM_Corvane_Helmet"));
+	CorvaneVest = LoadDefault<UStaticMesh>(TEXT("/Game/Characters/Enemy/Gear/SM_Corvane_Vest.SM_Corvane_Vest"));
+	ArmyBody = LoadDefault<UMaterialInterface>(TEXT("/Game/Characters/Enemy/Materials/MI_Army_Body.MI_Army_Body"));
+	ArmySleeves = LoadDefault<UMaterialInterface>(TEXT("/Game/Characters/Enemy/Materials/MI_Army_Sleeves.MI_Army_Sleeves"));
+
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 	Move->MaxWalkSpeed = WalkSpeed;
 	Move->bOrientRotationToMovement = true;
@@ -112,7 +146,76 @@ ABLEnemyCharacter::ABLEnemyCharacter(const FObjectInitializer& ObjectInitializer
 
 void ABLEnemyCharacter::BeginPlay()
 {
+	DropWeaponData = Weapon->StartingWeapons.Num() > 0 ? Weapon->StartingWeapons[0].Get() : nullptr;
+	// Tirador de supresión: antes de Super (el arma y la salud se inicializan en el BeginPlay de sus componentes)
+	if (EnemyRole == EBLEnemyRole::Gunner)
+	{
+		Health->MaxHealth = 190.f;
+		WalkSpeed = 150.f;
+		JogSpeed = 320.f;
+		if (Weapon->StartingWeapons.Num() > 0 && Weapon->StartingWeapons[0])
+		{
+			// Ametralladora ligera a partir del AR-7: cinta de 100, algo más lenta y menos precisa
+			UBLWeaponData* LMG = DuplicateObject<UBLWeaponData>(Weapon->StartingWeapons[0], this);
+			LMG->RoundsPerMinute = 640.f;
+			LMG->MagazineSize = 100;
+			LMG->Damage = 24.f;
+			LMG->HipSpread *= 1.6f;
+			LMG->AimSpread = 0.7f;
+			LMG->NoiseRange = 6500.f;
+			Weapon->StartingWeapons[0] = LMG;
+		}
+	}
+	else if (EnemyRole == EBLEnemyRole::Operator || EnemyRole == EBLEnemyRole::Sniper)
+	{
+		// Placa: el cuerpo recibe ~65 % (la cabeza sigue multiplicando x2,5 en el arma)
+		Health->MaxHealth = EnemyRole == EBLEnemyRole::Operator ? 140.f : 110.f;
+		Health->DamageTakenMultiplier = EnemyRole == EBLEnemyRole::Operator ? 0.65f : 0.8f;
+		if (Weapon->StartingWeapons.Num() > 0 && Weapon->StartingWeapons[0])
+		{
+			UBLWeaponData* W = DuplicateObject<UBLWeaponData>(Weapon->StartingWeapons[0], this);
+			if (EnemyRole == EBLEnemyRole::Sniper)
+			{
+				// Fusil de tirador: tiro a tiro, mucho daño, preciso
+				W->RoundsPerMinute = 45.f;
+				W->MagazineSize = 5;
+				W->Damage = 80.f;
+				W->HipSpread = 0.15f;
+				W->AimSpread = 0.02f;
+				W->NoiseRange = 9000.f;
+				W->MaxRange = 20000.f;
+			}
+			else
+			{
+				W->Damage = 30.f;
+				W->HipSpread *= 0.6f;
+			}
+			Weapon->StartingWeapons[0] = W;
+		}
+		JogSpeed = 430.f;
+	}
+	else if (EnemyRole == EBLEnemyRole::Ally)
+	{
+		Health->MaxHealth = 160.f;
+	}
 	Super::BeginPlay();
+	Flashlight->SetVisibility(bFlashlight);
+	if (IsCorvane())
+	{
+		// Negro sin insignias, casco con visor y chaleco de placas; sin brazalete de la Columna
+		if (CorvaneBody) { GetMesh()->SetMaterial(0, CorvaneBody); }
+		if (CorvaneSleeves) { GetMesh()->SetMaterial(1, CorvaneSleeves); }
+		if (CorvaneHelmet) { Helmet->SetStaticMesh(CorvaneHelmet); }
+		if (CorvaneVest) { Vest->SetStaticMesh(CorvaneVest); }
+		Armband->SetVisibility(false);
+	}
+	else if (EnemyRole == EBLEnemyRole::Ally)
+	{
+		// Ejército de Varania: uniforme gris verdoso, sin el brazalete negro de la Columna
+		if (ArmyBody) { GetMesh()->SetMaterial(0, ArmyBody); }
+		if (ArmySleeves) { GetMesh()->SetMaterial(1, ArmySleeves); }
+		Armband->SetVisibility(false);
+	}
 	BLDamage::SetupCharacterCollision(this);
 	Health->OnDeath.AddDynamic(this, &ABLEnemyCharacter::HandleDeath);
 	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
@@ -123,8 +226,45 @@ void ABLEnemyCharacter::BeginPlay()
 	}
 	FitGearToBone(Vest, FName("spine_05"));
 	FitGearToBone(Helmet, FName("head"));
-	// Variedad: uno de cada tres va sin casco (pasamontañas)
-	Helmet->SetVisibility(VoiceIndex != 2);
+	// Variedad: uno de cada tres va sin casco (pasamontañas); el tirador de supresión y Corvane siempre con casco
+	Helmet->SetVisibility(VoiceIndex != 2 || EnemyRole != EBLEnemyRole::Rifleman);
+}
+
+void ABLEnemyCharacter::OnMissionActivate(FName Tag)
+{
+	if (IBLActivatable* C = Cast<IBLActivatable>(GetController()))
+	{
+		C->OnMissionActivate(Tag);
+	}
+}
+
+bool ABLEnemyCharacter::IsLaserOn() const
+{
+	return Laser && Laser->IsVisible();
+}
+
+void ABLEnemyCharacter::TickLaser()
+{
+	const bool bOn = EnemyRole == EBLEnemyRole::Sniper && bAiming && !IsDead();
+	Laser->SetVisibility(bOn);
+	if (!bOn)
+	{
+		return;
+	}
+	// Del cañón hacia donde apunta, hasta lo primero que toque (el punto rojo sobre la pared o sobre ti)
+	const FVector Start = WeaponMesh->DoesSocketExist(FName("Muzzle")) ? WeaponMesh->GetSocketLocation(FName("Muzzle")) : GetEyeLocation();
+	const FVector Dir = (AimPoint - Start).GetSafeNormal();
+	FHitResult Hit;
+	FCollisionQueryParams Q(SCENE_QUERY_STAT(BLLaser), false, this);
+	const FVector End = GetWorld()->LineTraceSingleByChannel(Hit, Start, Start + Dir * 12000.f, ECC_Visibility, Q) ? FVector(Hit.ImpactPoint) : Start + Dir * 12000.f;
+	const float Len = FVector::Dist(Start, End);
+	Laser->SetWorldLocationAndRotation((Start + End) * 0.5f, Dir.Rotation());
+	Laser->SetWorldScale3D(FVector(Len / 100.f, 0.006f, 0.006f));
+}
+
+USpotLightComponent* ABLEnemyCharacter::GetFlashlight() const
+{
+	return bFlashlight && Flashlight && Flashlight->IsVisible() && !IsDead() ? Flashlight.Get() : nullptr;
 }
 
 void ABLEnemyCharacter::SetAim(const FVector& Point, bool bInAiming)
@@ -152,6 +292,7 @@ FVector ABLEnemyCharacter::GetEyeLocation() const
 void ABLEnemyCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	TickLaser();   // antes de salir si está muerto: así se apaga
 	if (IsDead())
 	{
 		return;
@@ -298,11 +439,33 @@ void ABLEnemyCharacter::HandleDeath(const FBLDamageInfo& Info)
 	WeaponMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 	WeaponMesh->SetSimulatePhysics(true);
 	WeaponMesh->AddImpulse(Info.Direction * 150.f + FVector(0.f, 0.f, 100.f), NAME_None, true);
+	// Cuando el arma ya ha caído, pasa a ser un arma del suelo que se puede recoger (o coger su munición)
+	if (EnemyRole != EBLEnemyRole::Ally && DropWeaponData)
+	{
+		const int32 Magazine = Weapon->GetMagazine();
+		FTimerHandle DropTimer;
+		GetWorldTimerManager().SetTimer(DropTimer, FTimerDelegate::CreateWeakLambda(this, [this, Magazine]() { SpawnWeaponPickup(Magazine); }), 1.2f, false);
+	}
 	if (AController* C = GetController())
 	{
 		C->UnPossess();
 	}
 	SetLifeSpan(90.f);
+}
+
+void ABLEnemyCharacter::SpawnWeaponPickup(int32 Magazine)
+{
+	FBLWeaponSlot Slot;
+	Slot.Data = DropWeaponData;
+	Slot.Magazine = FMath::Clamp(Magazine, 0, DropWeaponData->MagazineSize);
+	// Lo que llevaba en las cartucheras: uno o dos cargadores
+	Slot.Reserve = DropWeaponData->MagazineSize * FMath::RandRange(1, 2);
+	if (ABLWeaponPickup::SpawnDrop(this, Slot, WeaponMesh->Bounds.Origin))
+	{
+		WeaponMesh->SetSimulatePhysics(false);
+		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		WeaponMesh->SetVisibility(false);
+	}
 }
 
 void ABLEnemyCharacter::SetVoiceComponent(UAudioComponent* Component)

@@ -136,7 +136,10 @@ void ABLBuilding::Rebuild()
 		auto At = [&](float T, float Z, float X = 0.f) { return Origin + Along * T + Face.N * X + FVector(0.f, 0.f, Z); };
 
 		// Remates que recorren toda la cara (un poco más largos para cerrar la esquina)
-		AddPiece(EBLFacadePiece::Cornice, FTransform(Rot, At(0.f, Size.Z), FVector(1.f, (Face.Length + 30.f) / KitWidth, 1.f)));
+		if (CorniceMask & (1 << F))
+		{
+			AddPiece(EBLFacadePiece::Cornice, FTransform(Rot, At(0.f, Size.Z), FVector(1.f, (Face.Length + 30.f) / KitWidth, 1.f)));
+		}
 		for (int32 K = 1; K < Floors; ++K)
 		{
 			AddPiece(EBLFacadePiece::Band, FTransform(Rot, At(0.f, K * FH), FVector(1.f, (Face.Length + 16.f) / KitWidth, 1.f)));

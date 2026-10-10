@@ -12,6 +12,10 @@
 #include "Components/AudioComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "EngineUtils.h"
+#include "UObject/UObjectIterator.h"
+#include "Materials/MaterialInterface.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -41,6 +45,16 @@ void ABLCharacter::InitCombat()
 		if (HeartbeatAudio)
 		{
 			HeartbeatAudio->bAutoDestroy = false;
+		}
+	}
+	// Agua profunda del nivel: las mallas con el material del agua (sin colisión: se cae dentro)
+	WaterBoxes.Reset();
+	for (TObjectIterator<UStaticMeshComponent> It; It; ++It)
+	{
+		const UMaterialInterface* Mat = It->GetWorld() == GetWorld() && It->IsRegistered() ? It->GetMaterial(0) : nullptr;
+		if (Mat && Mat->GetName().StartsWith(TEXT("M_Env_Water")))
+		{
+			WaterBoxes.Add(It->Bounds.GetBox());
 		}
 	}
 	if (IsPlayerControlled())
@@ -116,6 +130,10 @@ void ABLCharacter::HandleDamaged(const FBLDamageInfo& Info)
 
 void ABLCharacter::HandleDeath(const FBLDamageInfo& Info)
 {
+	if (IsMounted())
+	{
+		DismountGun();
+	}
 	if (bDead)
 	{
 		return;
@@ -195,8 +213,64 @@ void ABLCharacter::HandleHitConfirmed(EBLHitZone Zone, float Damage, bool bKille
 // Tick: feedback de salud (post-proceso, latido), muerte y reaparición
 // ---------------------------------------------------------------------------
 
+void ABLCharacter::ApplyEnvironmentDamage(float Amount, bool bLethal, const FVector& Source)
+{
+	if (bDead || !Health)
+	{
+		return;
+	}
+	FBLDamageInfo Info;
+	Info.Amount = bLethal ? Health->GetMaxHealth() * 100.f : Amount / FMath::Max(Health->DamageTakenMultiplier, 0.01f);
+	Info.Zone = EBLHitZone::Torso;
+	Info.Location = GetActorLocation();
+	Info.SourceLocation = Source;
+	Info.Direction = (GetActorLocation() - Source).GetSafeNormal();
+	Info.Causer = this;
+	Health->ApplyDamage(Info);
+}
+
+void ABLCharacter::Landed(const FHitResult& Hit)
+{
+	Super::Landed(Hit);
+	const float FallSpeed = -GetCharacterMovement()->Velocity.Z;
+	FallTime = 0.f;
+	FirstPersonRig->NotifyLanded(GetCharacterMovement()->Velocity.Z);
+	const float Impact = FMath::GetMappedRangeValueClamped(FVector2D(200.f, 900.f), FVector2D(0.6f, 1.3f), FallSpeed);
+	PlayFootstep(FootstepVolume * Impact);
+	PlayGear(0.5f * Impact);
+	// Daño por caída: de 10 (≈ 5 m) a mortal (≈ 15 m), con un golpe de cámara proporcional
+	if (FallSpeed > FallDamageMinSpeed)
+	{
+		const float A = FMath::Clamp((FallSpeed - FallDamageMinSpeed) / FMath::Max(FallLethalSpeed - FallDamageMinSpeed, 1.f), 0.f, 1.f);
+		FirstPersonRig->AddCameraKick(FRotator(-10.f - 20.f * A, 0.f, FMath::RandBool() ? 8.f : -8.f));
+		ApplyEnvironmentDamage(FMath::Lerp(10.f, 100.f, A), FallSpeed >= FallLethalSpeed, GetActorLocation() - FVector(0.f, 0.f, 100.f));
+		UE_LOG(LogBlackline, Log, TEXT("Caída a %.0f cm/s: daño %.0f%s"), FallSpeed, FMath::Lerp(10.f, 100.f, A), FallSpeed >= FallLethalSpeed ? TEXT(" (mortal)") : TEXT(""));
+	}
+}
+
 void ABLCharacter::UpdateCombat(float DeltaTime)
 {
+	// Caídas sin suelo y agua profunda
+	if (!bDead)
+	{
+		FallTime = GetCharacterMovement()->IsFalling() && GetCharacterMovement()->Velocity.Z < 0.f ? FallTime + DeltaTime : 0.f;
+		if (FallTime > FallOutOfWorldTime)
+		{
+			UE_LOG(LogBlackline, Log, TEXT("Jugador fuera del mapa (cayendo %.1f s)"), FallTime);
+			ApplyEnvironmentDamage(0.f, true, GetActorLocation());
+		}
+		const FVector Head = Camera->GetComponentLocation();
+		for (const FBox& W : WaterBoxes)
+		{
+			if (Head.X > W.Min.X && Head.X < W.Max.X && Head.Y > W.Min.Y && Head.Y < W.Max.Y && Head.Z < W.Max.Z - 20.f && Head.Z > W.Min.Z - 3000.f)
+			{
+				UE_LOG(LogBlackline, Log, TEXT("Jugador en el agua: ahogado"));
+				ApplyEnvironmentDamage(0.f, true, Head + FVector(0.f, 0.f, 200.f));
+				break;
+			}
+		}
+	}
+
 	const float Now = GetWorld()->GetTimeSeconds();
 	DamageIndicators.RemoveAll([Now](const FDamageIndicator& I) { return Now - I.Time > IndicatorLife; });
 	DamageFlash = FMath::Max(0.f, DamageFlash - DeltaTime * 1.6f);

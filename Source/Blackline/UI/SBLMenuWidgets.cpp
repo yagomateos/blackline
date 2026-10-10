@@ -1,4 +1,5 @@
 #include "UI/SBLMenuWidgets.h"
+#include "UI/BLMenuData.h"
 
 #include "UI/BLMenuStyle.h"
 
@@ -14,7 +15,7 @@
 
 namespace
 {
-	bool IsAccept(const FKey& K) { return K == EKeys::Enter || K == EKeys::SpaceBar || K == EKeys::Gamepad_FaceButton_Bottom || K == EKeys::Virtual_Accept; }
+	bool IsAccept(const FKey& K) { return K == EKeys::Enter || K == EKeys::SpaceBar || K == EKeys::Gamepad_FaceButton_Bottom || K == EKeys::Virtual_Gamepad_Accept.GetVirtualKey(); }
 	int32 StepOf(const FKey& K)
 	{
 		if (K == EKeys::Left || K == EKeys::A || K == EKeys::Gamepad_DPad_Left || K == EKeys::Gamepad_LeftStick_Left) return -1;
@@ -392,9 +393,11 @@ int32 SBLTopoMap::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSla
 	for (int32 i = 0; i < Missions().Num(); ++i)
 	{
 		const FMarker& M = Missions()[i];
+		// Disponible según los datos del menú (BLMenuData), no según la lista del mapa
+		const bool bAvail = i < int32(UE_ARRAY_COUNT(BLMenuData::Missions)) ? BLMenuData::Missions[i].bAvailable : M.bAvailable;
 		const FVector2D C = P(M.Pos);
-		const FLinearColor Col = M.bAvailable ? BLMenu::Amber : BLMenu::Locked;
-		const float R = (i == Hi ? 13.f : 8.f) + (M.bAvailable ? 3.f * FMath::Sin(float(Time) * 3.f + i) : 0.f);
+		const FLinearColor Col = bAvail ? BLMenu::Amber : BLMenu::Locked;
+		const float R = (i == Hi ? 13.f : 8.f) + (bAvail ? 3.f * FMath::Sin(float(Time) * 3.f + i) : 0.f);
 		TArray<FVector2D> Ring;
 		for (int32 k = 0; k <= 24; ++k)
 		{
@@ -404,7 +407,7 @@ int32 SBLTopoMap::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSla
 		FSlateDrawElement::MakeLines(Out, LayerId + 7, G.ToPaintGeometry(), Ring, ESlateDrawEffect::None, Col, true, i == Hi ? 2.f : 1.4f);
 		FSlateDrawElement::MakeBox(Out, LayerId + 7, G.ToPaintGeometry(FVector2f(6.f, 6.f), FSlateLayoutTransform(FVector2f(C - FVector2D(3.f, 3.f)))), BLMenu::White(), ESlateDrawEffect::None, Col);
 		FSlateDrawElement::MakeText(Out, LayerId + 7, G.ToPaintGeometry(FVector2f(300.f, 16.f), FSlateLayoutTransform(FVector2f(C + FVector2D(R + 6.f, -8.f)))),
-			M.Label + (M.bAvailable ? TEXT("") : TEXT("  [BLOQUEADA]")), BLMenu::Mono(i == Hi ? 12 : 10), ESlateDrawEffect::None, Col);
+			M.Label + (bAvail ? TEXT("") : TEXT("  [BLOQUEADA]")), BLMenu::Mono(i == Hi ? 12 : 10), ESlateDrawEffect::None, Col);
 	}
 	// Barrido de radar lento y viñeta
 	const float Sweep = float(FMath::Fmod(Time * 0.06, 1.0));

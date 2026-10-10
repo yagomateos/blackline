@@ -21,7 +21,9 @@ BINDINGS = {
     "IA_Reload":    ["R", "Gamepad_FaceButton_Left"],
     "IA_Interact":  ["F", "Gamepad_DPad_Down"],
     "IA_Grenade":   ["G", "Gamepad_RightShoulder"],
-    "IA_SwapWeapon": ["One", "Two", "Gamepad_FaceButton_Top"],
+    "IA_SwapWeapon": ["MouseScrollUp", "MouseScrollDown", "Gamepad_FaceButton_Top"],   # siguiente arma
+    "IA_WeaponPrimary": ["One"],
+    "IA_WeaponSecondary": ["Two"],
 }
 
 tools = unreal.AssetToolsHelpers.get_asset_tools()

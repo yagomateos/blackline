@@ -8,8 +8,14 @@ fuera del repositorio (`../BlacklineDownloads/`); en el repo solo están los der
 | Recurso | Fuente | Licencia | Uso |
 |---|---|---|---|
 | The Free Firearm Sound Library (AR-15 cercano/medio, AK-47 y PPSh ráfagas) | https://opengameart.org/content/the-free-firearm-sound-library | CC0 | Disparo del AR-7 (capas cercana, cola, lejana), tiroteos lejanos del ambiente |
-| Gun reload sounds (SpringySpringo) | https://opengameart.org/content/gun-reload-sounds | CC0 | Sacar/meter cargador |
+| The Free Firearm Sound Library (Walther PPQ 9 mm cercano/medio, 1911 .45 cercano) | (misma) | CC0 | Disparo de la P-17 (capas cercana, cola, 3D, lejana): `Tools/audio/gen_p17_sfx.py` |
+| The Free Firearm Sound Library (Benelli Nova, Winchester Model 12 y Charles Daly, corredera del 12, cercano/medio) | (misma) | CC0 | Disparo de la SG-12 (capas cercana, cola, 3D, lejana): `Tools/audio/gen_sg12_sfx.py` |
+| Gun reload sounds (SpringySpringo) | https://opengameart.org/content/gun-reload-sounds | CC0 | Sacar/meter cargador; `shotguncock.wav` = bombeo de la SG-12 (partido en atrás/adelante) |
 | equipment clicks III (LFA) | https://opengameart.org/content/equipment-clicks-iii | CC0 | Cerrojo, gatillo en vacío |
+
+P-17: recarga y corredera = las mismas grabaciones de recarga y clics, más agudas y cortas; el cargador que cae al suelo es **síntesis propia**. Malla, texturas y vaina 9 mm: **propias** (`ArtSource/Blender/scripts/gen_p17.py`).
+
+SG-12: malla, máscaras, cartucho y vaina del 12 **propios** (`ArtSource/Blender/scripts/gen_sg12.py`); cartucho al depósito = clics CC0 + roce sintetizado.
 
 Procesado: `Tools/audio/process_sfx.py` (recorte por transitorios, capas, remuestreo a 48 kHz).
 Impactos por material, casquillos, pasos, foley y viento/rumor del ambiente: **síntesis propia** (mismo script).

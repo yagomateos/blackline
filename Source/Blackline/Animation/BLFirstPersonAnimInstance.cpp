@@ -276,7 +276,7 @@ void FBLFirstPersonAnimProxy::ApplyHandIK(FPoseContext& Output) const
 	if (State.bHasWeapon)
 	{
 		// Mano derecha: su socket HandGrip_R coincide con el origen del arma (pistolete)
-		SolveArm(CSPose, UpperR, LowerR, HandR, State.HandGripRLocal.Inverse() * WeaponCS, 1.f, Result);
+		SolveArm(CSPose, UpperR, LowerR, HandR, State.HandGripRLocal.Inverse() * (State.RightGripInWeapon * WeaponCS), 1.f, Result);
 	}
 	if (State.LeftHandIKAlpha > ZERO_ANIMWEIGHT_THRESH)
 	{

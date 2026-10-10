@@ -98,6 +98,12 @@ def main():
         "distant": attenuation("SA_Distant", 30000, 25000, 1500, True, False),
         "amb_small": attenuation("SA_AmbSmall", 150, 1600, 4000, True, True),
         "amb_large": attenuation("SA_AmbLarge", 700, 4000, 3000, True, False),
+        # Granada (Bloque 11): explosión que se oye en todo el barrio; rebotes como un impacto pequeño
+        "explosion": attenuation("SA_Explosion", 800, 9000, 2500, True, False),
+        "bounce": attenuation("SA_GrenadeBounce", 100, 1800, 6000, True, True),
+        # Vehículos (fases 8-9): motor del blindado y rotor del helicóptero se oyen desde lejos
+        "vehicle": attenuation("SA_Vehicle", 600, 7000, 2500, True, False),
+        "rotor": attenuation("SA_Rotor", 1500, 14000, 2000, True, False),
     }
     con_voice = concurrency("SCon_Voice", 3)
     concurrency("SCon_WeaponFire", 12)   # capa cercana + lejana por disparo de la IA
@@ -109,6 +115,21 @@ def main():
         ("Voice/Barks/", "voice", con_voice, "Voice", 1.0, False),
         ("Weapons/Bullet/SW_Bullet_Whiz", "bullet", None, "SFX", 0.7, False),
         ("Weapons/Bullet/", "bullet", None, "SFX", 1.0, False),
+        ("Weapons/Grenade/SW_Grenade_Explosion", "explosion", None, "SFX", 1.0, False),
+        ("Weapons/Grenade/SW_Grenade_Bounce", "bounce", None, "SFX", 0.7, False),
+        ("Weapons/Grenade/", None, None, "SFX", 0.8, False),       # anilla y lanzamiento (2D, jugador)
+        ("Vehicles/SW_BTR_Engine", "vehicle", None, "SFX", 0.9, True),
+        ("Vehicles/SW_BTR_Cannon", "explosion", None, "SFX", 1.0, False),
+        ("Vehicles/SW_Heli_Rotor", "rotor", None, "SFX", 1.0, True),
+        ("Vehicles/SW_Drone_Buzz", "vehicle", None, "SFX", 0.8, True),      # misión 2
+        ("Vehicles/SW_Boat_Outboard", "vehicle", None, "SFX", 0.8, True),
+        ("Vehicles/SW_Ship_Horn", "rotor", None, "SFX", 1.0, False),         # misión 3
+        ("Vehicles/SW_Jet_Flyby", None, None, "SFX", 1.0, False),           # misión 4: pasada de los cazas (2D)
+        ("World/SW_Mortar_Whistle", "explosion", None, "SFX", 0.9, False),
+        ("Vehicles/", "vehicle", None, "SFX", 0.9, False),
+        ("World/", "amb_small", None, "SFX", 1.0, False),                    # puertas y carga de brecha
+        ("Ambience/Zones/SW_AmbZ_Siren", "rotor", None, "Ambience", 0.9, True),
+        ("Ambience/Zones/SW_AmbZ_Flare", "amb_large", None, "Ambience", 0.8, True),
         ("Ambience/Zones/SW_AmbZ_Hum", "amb_small", None, "Ambience", 0.3, True),
         ("Ambience/Zones/SW_AmbZ_Fire", "amb_small", None, "Ambience", 0.7, True),
         ("Ambience/Zones/", "amb_large", None, "Ambience", 0.6, True),
@@ -122,7 +143,7 @@ def main():
         ("UI/", None, None, "SFX", 0.55, False),             # hitmarker, objetivo y menú (Bloque 10), 2D
     ]
     count = 0
-    folders = ["Voice", "Weapons/Bullet", "Ambience/Zones", "Ambience/Distant", "Music", "UI"]
+    folders = ["Voice", "Weapons/Bullet", "Weapons/Grenade", "Ambience/Zones", "Ambience/Distant", "Music", "UI", "Vehicles", "World"]
     for folder in folders:
         for wav in sorted(glob.glob(os.path.join(SFX_DIR, folder, "**", "*.wav"), recursive=True)):
             rel = os.path.relpath(wav, SFX_DIR).replace("\\", "/")

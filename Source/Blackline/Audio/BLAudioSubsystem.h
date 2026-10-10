@@ -23,6 +23,7 @@ enum class EBLBark : uint8
 	GiveUp,
 	Lost,
 	ManDown,
+	Grenade,
 	MAX UMETA(Hidden),
 };
 

@@ -1,5 +1,7 @@
 #include "UI/BLUserSettings.h"
 
+#include "Combat/BLHealthComponent.h"
+
 #include "Player/BLCharacter.h"
 #include "Player/BLFirstPersonRigComponent.h"
 
@@ -54,11 +56,29 @@ void UBLUserSettings::ApplyAudio(const UObject* WorldContext) const
 	UGameplayStatics::PushSoundMixModifier(World, Mix);
 }
 
+float UBLUserSettings::PlayerDamageTaken(int32 Level)
+{
+	static const float Values[NumDifficulties] = { 0.35f, 0.55f, 0.85f };
+	return Values[FMath::Clamp(Level, 0, NumDifficulties - 1)];
+}
+
+const TCHAR* UBLUserSettings::DifficultyName(int32 Level)
+{
+	static const TCHAR* Names[NumDifficulties] = { TEXT("RECLUTA"), TEXT("VETERANO"), TEXT("ÉLITE") };
+	return Names[FMath::Clamp(Level, 0, NumDifficulties - 1)];
+}
+
 void UBLUserSettings::ApplyToPlayer(APlayerController* PC) const
 {
 	if (ABLCharacter* C = PC ? Cast<ABLCharacter>(PC->GetPawn()) : nullptr)
 	{
 		C->SetLookOptions(MouseSensitivity, bInvertY);
+		if (UBLHealthComponent* H = C->GetHealth())
+		{
+			// Las pruebas automáticas juegan siempre en Veterano, elija lo que elija el jugador
+			FString Test;
+			H->DamageTakenMultiplier = PlayerDamageTaken(FParse::Value(FCommandLine::Get(), TEXT("BLTest="), Test) ? 1 : Difficulty);
+		}
 		if (UBLFirstPersonRigComponent* Rig = C->GetFirstPersonRig())
 		{
 			// El FOV de ADS mantiene la misma proporción respecto al de cadera

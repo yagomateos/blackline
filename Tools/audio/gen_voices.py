@@ -83,6 +83,18 @@ def radio(v, rng):
     return A.fade([out], SR, 3, 20)[0]
 
 
+def in_person(v, rng):
+    """Voz en persona (no por radio): limpia, algo comprimida y con un poco de sala."""
+    s = A.biquad(v, SR, "hp", 110, 0.7)
+    s = A.compress(s, SR, -26, 3, 3, 90, 0)
+    room = A.lowpass(s, SR, 3000)
+    out = s + [0.0] * int(0.15 * SR)
+    for d, g in ((0.017, 0.18), (0.031, 0.12), (0.052, 0.07)):
+        for i, x in enumerate(room):
+            out[i + int(d * SR)] += x * g
+    return A.fade([out], SR, 2, 40)[0]
+
+
 def bark(v, rng):
     s = A.biquad(v, SR, "hp", 140, 0.7)
     s = A.biquad(s, SR, "peak", 2600, 1.0, 6.0)                                   # presencia: voz forzada
@@ -100,7 +112,7 @@ def main():
     raw_dir = tempfile.mkdtemp(prefix="bl_vo_")
     jobs = []
     for L in lines:
-        if L["kind"] == "radio":
+        if L["kind"] in ("radio", "persona"):
             jobs.append((L["id"], L["voice"], L["pitch"], L["rate"], L["text"]))
         else:
             for v, (voice, pitch, rate) in enumerate(BARK_VOICES):
@@ -109,8 +121,9 @@ def main():
     count = 0
     for L in lines:
         rng = random.Random(L["id"])
-        if L["kind"] == "radio":
-            s = radio(load_mono(os.path.join(raw_dir, L["id"] + ".wav")), rng)
+        if L["kind"] in ("radio", "persona"):
+            raw = load_mono(os.path.join(raw_dir, L["id"] + ".wav"))
+            s = radio(raw, rng) if L["kind"] == "radio" else in_person(raw, rng)
             path = os.path.join(out, "Voice", "Radio", f"VO_{L['id']}.wav")
             os.makedirs(os.path.dirname(path), exist_ok=True)
             A.write_wav(path, [s], peak_db=-2.0)

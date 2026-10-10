@@ -89,11 +89,10 @@ void SBLOptionsPanel::ApplyLive()
 
 void SBLOptionsPanel::Save()
 {
+	// Solo las opciones propias: los gráficos se guardan al cambiarlos (ApplyAndSaveGraphics). Guardar aquí
+	// UGameUserSettings escribía lo que hubiera en memoria (en el editor, la calidad Épica del visor) y
+	// pisaba el preajuste Alto (-4 ms en la misión).
 	UBLUserSettings::Get()->Save();
-	if (UGameUserSettings* G = GUS())
-	{
-		G->SaveSettings();
-	}
 }
 
 TSharedRef<SWidget> SBLOptionsPanel::GraphicsPage()
@@ -201,6 +200,14 @@ TSharedRef<SWidget> SBLOptionsPanel::AudioPage()
 TSharedRef<SWidget> SBLOptionsPanel::ControlsPage()
 {
 	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SBLSelectorRow).Label(LOCTEXT("Difficulty", "DIFICULTAD"))
+			.Value_Lambda([]() { const int32 D = UBLUserSettings::Get()->Difficulty;
+				return FText::FromString(FString::Printf(TEXT("%s · DAÑO RECIBIDO %d %%"), UBLUserSettings::DifficultyName(D), FMath::RoundToInt(100.f * UBLUserSettings::PlayerDamageTaken(D)))); })
+			.Fraction_Lambda([]() { return TOptional<float>(UBLUserSettings::Get()->Difficulty / float(UBLUserSettings::NumDifficulties - 1)); })
+			.OnStep_Lambda([this](int32 Dir) { int32& D = UBLUserSettings::Get()->Difficulty; D = FMath::Clamp(D + Dir, 0, UBLUserSettings::NumDifficulties - 1); ApplyLive(); })
+		]
 		+ SVerticalBox::Slot().AutoHeight()
 		[
 			SNew(SBLSelectorRow).Label(LOCTEXT("Sens", "SENSIBILIDAD DEL RATÓN"))

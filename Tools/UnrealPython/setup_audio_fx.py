@@ -335,20 +335,35 @@ def simple_pbr(name, folder, color, rough, metal, ism=False, translucent_opacity
     return finish(m)
 
 
+# Antirrepetición (2026-10-09, el usuario veía la cuadrícula del suelo): la proyección de arriba (suelos) mezcla dos
+# muestras, la normal y otra girada 37° a 0,71 de escala, con una máscara de baja frecuencia; el color base lleva
+# además una variación de tono a gran escala. Paredes (proyecciones laterales): una muestra, como antes.
+_AT_TOP = (
+    "float2 q = p.xy;"
+    "float2 r = float2(q.x * 0.8 - q.y * 0.6, q.x * 0.6 + q.y * 0.8) * 0.71 + float2(0.37, 0.61);"
+    "float k = sin(WP.x * 0.00041 + 1.7 * sin(WP.y * 0.00029)) * sin(WP.y * 0.00037 + 1.3 * sin(WP.x * 0.00023));"
+    "float m = smoothstep(-0.2, 0.2, k);")
 TRIPLANAR_SAMPLE = (
     "float3 n = pow(abs(WN), 4.0); n /= (n.x + n.y + n.z);"
-    "float3 p = WP / Tile;"
+    "float3 p = WP / Tile;" + _AT_TOP +
     "float4 a = Tex.Sample(TexSampler, p.zy);"
     "float4 b = Tex.Sample(TexSampler, p.xz);"
-    "float4 c = Tex.Sample(TexSampler, p.xy);"
+    "float4 c = lerp(Tex.Sample(TexSampler, q), Tex.Sample(TexSampler, r), m);"
     "return (a * n.x + b * n.y + c * n.z).rgb;")
+TRIPLANAR_SAMPLE_BC = TRIPLANAR_SAMPLE.replace(
+    "return (a * n.x + b * n.y + c * n.z).rgb;",
+    "float g = sin(WP.x * 0.00013 + 2.1 * sin(WP.y * 0.00011)) * sin(WP.y * 0.00017 + 1.9 * sin(WP.x * 0.00009));"
+    "return (a * n.x + b * n.y + c * n.z).rgb * lerp(0.84, 1.07, saturate(0.5 + 0.5 * g));")
 TRIPLANAR_NORMAL = (
     # Mezcla "whiteout" de normales triplanares -> normal en espacio de mundo
     "float3 w = pow(abs(WN), 4.0); w /= (w.x + w.y + w.z);"
-    "float3 p = WP / Tile;"
+    "float3 p = WP / Tile;" + _AT_TOP +
     "float3 tx = Tex.Sample(TexSampler, p.zy).xyz * 2.0 - 1.0;"
     "float3 ty = Tex.Sample(TexSampler, p.xz).xyz * 2.0 - 1.0;"
-    "float3 tz = Tex.Sample(TexSampler, p.xy).xyz * 2.0 - 1.0;"
+    "float3 t0 = Tex.Sample(TexSampler, q).xyz * 2.0 - 1.0;"
+    "float3 t1 = Tex.Sample(TexSampler, r).xyz * 2.0 - 1.0;"
+    "t1.xy = float2(0.8 * t1.x + 0.6 * t1.y, -0.6 * t1.x + 0.8 * t1.y);"   # deshace el giro de la muestra girada
+    "float3 tz = normalize(lerp(t0, t1, m));"
     "tx.xy *= Strength; ty.xy *= Strength; tz.xy *= Strength;"
     "tx = float3(tx.xy + WN.zy, abs(tx.z) * WN.x);"
     "ty = float3(ty.xy + WN.xz, abs(ty.z) * WN.y);"
@@ -356,9 +371,12 @@ TRIPLANAR_NORMAL = (
     "return normalize(tx.zyx * w.x + ty.xzy * w.y + tz.xyz * w.z);")
 
 
+ENV_MASTER = "M_Env_Triplanar_AT"
+
+
 def make_env_master(tex):
     folder = "/Game/Environment/Materials"
-    m = new_material("M_Env_Triplanar", folder)
+    m = new_material(ENV_MASTER, folder)
     if m:
         m.set_editor_property("tangent_space_normal", False)
         wp = expr(m, unreal.MaterialExpressionWorldPosition, -1100, 0)
@@ -382,7 +400,7 @@ def make_env_master(tex):
             mel.connect_material_expressions(wn, "", c, "WN")
             mel.connect_material_expressions(tile, "", c, "Tile")
             return c
-        bc = tri(TRIPLANAR_SAMPLE, objs["BaseColorMap"], 0)
+        bc = tri(TRIPLANAR_SAMPLE_BC, objs["BaseColorMap"], 0)
         nrm = tri(TRIPLANAR_NORMAL, objs["NormalMap"], 250, ["Strength"])
         mel.connect_material_expressions(strength, "", nrm, "Strength")
         arm = tri(TRIPLANAR_SAMPLE, objs["ARMMap"], 500)
@@ -405,7 +423,7 @@ def make_env_master(tex):
             mel.connect_material_expressions(split, "", e, "")
             mel.connect_material_property(e, "", prop)
         finish(m)
-    return load(f"{folder}/M_Env_Triplanar")
+    return load(f"{folder}/{ENV_MASTER}")
 
 
 def make_physical_materials():

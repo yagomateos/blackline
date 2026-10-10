@@ -30,4 +30,9 @@ namespace BLDamage
 
 	/** Cápsula ignora el trazado de armas, la malla lo bloquea (impactos por hueso). */
 	BLACKLINE_API void SetupCharacterCollision(ACharacter* Character);
+
+	/** Trazado de un disparo por el canal Weapon. Atraviesa lo que no debe parar una bala aunque bloquee el canal
+	 *  (el perfil Trigger de Unreal deja los canales propios en Block): formas de colisión que no son de un personaje
+	 *  (volúmenes de checkpoint, triggers) y primitivas invisibles. */
+	BLACKLINE_API bool WeaponTrace(const UWorld* World, FHitResult& OutHit, const FVector& Start, const FVector& End, FCollisionQueryParams Params);
 }

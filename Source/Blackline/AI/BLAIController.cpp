@@ -9,6 +9,10 @@
 #include "Player/BLCharacter.h"
 #include "Weapons/BLWeaponComponent.h"
 #include "Weapons/BLWeaponData.h"
+#include "Weapons/BLGrenade.h"
+#include "Environment/BLSmokeEmitter.h"
+#include "Environment/BLNightSettings.h"
+#include "Mission/BLMissionDirector.h"
 
 #include "Camera/CameraComponent.h"
 #include "DrawDebugHelpers.h"
@@ -23,6 +27,7 @@
 #include "Perception/AISense_Damage.h"
 #include "Perception/AISense_Hearing.h"
 #include "Perception/AISense_Sight.h"
+#include "Kismet/GameplayStatics.h"
 
 static TAutoConsoleVariable<int32> CVarAIDebug(TEXT("bl.AI.Debug"), 0, TEXT("1 = muestra estado, consciencia y cobertura de cada enemigo"));
 
@@ -161,6 +166,10 @@ void ABLAIController::Bark(EBLBark Type, const TCHAR* Line)
 {
 	// El director de audio decide si suena (sin pisarse con otros) y con qué variación de la voz del enemigo
 	ABLEnemyCharacter* E = Enemy();
+	if (E && E->IsCorvane())
+	{
+		return;   // los operadores de Corvane no gritan: disciplina de radio (se les reconoce por el silencio)
+	}
 	UBLAudioSubsystem* Audio = UBLAudioSubsystem::Get(this);
 	if (E && Audio)
 	{
@@ -276,6 +285,10 @@ void ABLAIController::EnterCombat(AActor* InTarget, const FVector& Location, boo
 		{
 			S->ReportTarget(this, InTarget, Location);
 		}
+		if (ABLMissionDirector* D = ABLMissionDirector::Get(this); D && D->bAlarmOnDetection)
+		{
+			D->TriggerAlarm(TEXT("descubierto"));
+		}
 	}
 }
 
@@ -308,6 +321,11 @@ bool ABLAIController::CheckLineOfSight() const
 	FCollisionQueryParams Q(SCENE_QUERY_STAT(BLAILos), false, E);
 	Q.AddIgnoredActor(T);
 	const FVector From = E->GetEyeLocation();
+	// El humo tapa (granadas de humo del contraataque)
+	if (ABLSmokeEmitter::BlocksSight(From, TargetChest()))
+	{
+		return false;
+	}
 	// Ve al jugador si ve la cabeza o el pecho (canal Visibility: los volúmenes y personajes no tapan)
 	return !GetWorld()->LineTraceTestByChannel(From, TargetEye(), ECC_Visibility, Q)
 		|| !GetWorld()->LineTraceTestByChannel(From, TargetChest(), ECC_Visibility, Q);
@@ -328,8 +346,9 @@ void ABLAIController::TickPerception(float DeltaTime)
 	{
 		LosTimer = 0.15f;
 		const bool bInCone = bSeenByPerception || State == EBLAIState::Combat;
-		bTargetVisible = Player && bInCone && CheckLineOfSight()
-			&& FVector::Dist(Player->GetActorLocation(), GetPawn()->GetActorLocation()) < SightRadius + 600.f;
+		const float D = Player ? FVector::Dist(Player->GetActorLocation(), GetPawn()->GetActorLocation()) : 0.f;
+		NightVisibility = Player ? ABLNightSettings::GetVisibility(GetWorld(), GetPawn()->GetActorLocation(), Player, D) : 1.f;
+		bTargetVisible = Player && bInCone && NightVisibility > 0.f && CheckLineOfSight() && D < SightRadius + 600.f;
 	}
 	if (bTargetVisible)
 	{
@@ -347,6 +366,7 @@ void ABLAIController::TickPerception(float DeltaTime)
 			Rate *= Player->bIsCrouched ? 0.55f : 1.f;
 			Rate *= Player->GetVelocity().Size2D() > 450.f ? 1.4f : 1.f;
 			Rate *= Dist < 600.f ? 3.f : 1.f;   // casi encima: lo ve al instante
+			Rate *= Dist < 600.f ? FMath::Max(NightVisibility, 0.6f) : NightVisibility;   // de noche, a oscuras cuesta verle
 			Awareness += Rate * DeltaTime;
 		}
 		else
@@ -367,7 +387,8 @@ void ABLAIController::TickPerception(float DeltaTime)
 	{
 		// Puntería: el error baja mientras lo tiene a la vista (más rápido si el jugador está quieto)
 		const float Moving = Player->GetVelocity().Size2D() > 250.f ? 1.6f : 1.f;
-		const float MinError = AimErrorMin * Moving + FVector::Dist(Player->GetActorLocation(), GetPawn()->GetActorLocation()) * 0.012f;
+		const float Skill = Enemy() && Enemy()->IsCorvane() ? 0.5f : 1.f;   // Corvane: mucho mejor puntería
+		const float MinError = (AimErrorMin * Moving + FVector::Dist(Player->GetActorLocation(), GetPawn()->GetActorLocation()) * 0.012f) * Skill;
 		AimError = FMath::FInterpTo(AimError, MinError, DeltaTime, 0.7f);
 	}
 	else
@@ -631,6 +652,10 @@ ABLCoverPoint* ABLAIController::FindCover(bool bFlank) const
 
 bool ABLAIController::StartFlank()
 {
+	if (Enemy() && Enemy()->IsStatic())
+	{
+		return false;   // la ametralladora y el tirador se quedan en su sitio
+	}
 	ABLCoverPoint* C = FindCover(true);
 	if (!C)
 	{
@@ -667,8 +692,17 @@ void ABLAIController::TickShooting(float DeltaTime, bool bAllowed)
 		AimOffset = FMath::VRand() * FMath::FRandRange(0.2f, 1.f) * AimError;
 	}
 	// Fuego de supresión: si lo acaba de perder de vista, sigue disparando un poco a donde estaba
-	const bool bSuppress = !bTargetVisible && TimeSinceSeen < 1.5f;
-	const bool bCanShoot = bAllowed && (bTargetVisible || bSuppress) && !W->IsReloading();
+	// (la ametralladora, mucho más: barre la cobertura donde se metió)
+	const bool bGunner = E->IsGunner();
+	const bool bSniper = E->IsSniper();
+	// Tirador: tarda en fijar (el láser avisa) y no suprime; pierde el blanco poco a poco si se esconde
+	SniperLock = bTargetVisible ? SniperLock + DeltaTime : FMath::Max(0.f, SniperLock - DeltaTime * 0.5f);
+	if (bSniper)
+	{
+		AimOffset = AimOffset.GetClampedToMaxSize(FMath::Lerp(90.f, 8.f, FMath::Clamp(SniperLock / 1.8f, 0.f, 1.f)));
+	}
+	const bool bSuppress = !bSniper && !bTargetVisible && TimeSinceSeen < (bGunner ? 6.f : 1.5f);
+	const bool bCanShoot = bAllowed && (bTargetVisible || bSuppress) && !W->IsReloading() && (!bSniper || SniperLock >= 1.8f);
 	E->SetAim((bTargetVisible ? TargetChest() : LastKnownLocation + FVector(0.f, 0.f, 25.f)) + AimOffset, true);
 	if (!bCanShoot)
 	{
@@ -681,8 +715,8 @@ void ABLAIController::TickShooting(float DeltaTime, bool bAllowed)
 		BurstPause -= DeltaTime;
 		if (BurstPause <= 0.f)
 		{
-			BurstLeft = FMath::RandRange(3, 7);
-			BurstPause = FMath::FRandRange(0.45f, 1.1f);
+			BurstLeft = bSniper ? 1 : bGunner ? FMath::RandRange(8, 15) : FMath::RandRange(3, 7);
+			BurstPause = bSniper ? FMath::FRandRange(1.4f, 2.1f) : bGunner ? FMath::FRandRange(0.9f, 1.8f) : FMath::FRandRange(0.45f, 1.1f);
 		}
 		return;
 	}
@@ -723,8 +757,8 @@ void ABLAIController::TickCombat(float DeltaTime)
 		}
 	}
 
-	// Perdido de vista mucho tiempo: ir a buscarlo
-	if (TimeSinceSeen > ChaseDelay && Action != EBLCombatAction::Chase && Action != EBLCombatAction::Flank)
+	// Perdido de vista mucho tiempo: ir a buscarlo (la ametralladora no deja su puesto)
+	if (TimeSinceSeen > ChaseDelay && !E->IsStatic() && Action != EBLCombatAction::Chase && Action != EBLCombatAction::Flank)
 	{
 		S->ReleaseAttackToken(this);
 		S->ReleaseCover(this);
@@ -746,7 +780,7 @@ void ABLAIController::TickCombat(float DeltaTime)
 		if (Action == EBLCombatAction::None || RepathTimer <= 0.f)
 		{
 			RepathTimer = 1.5f;
-			if (ABLCoverPoint* C = FindCover(false))
+			if (ABLCoverPoint* C = E->IsStatic() ? nullptr : FindCover(false))
 			{
 				Cover = C;
 				S->ReserveCover(C, this);
@@ -761,13 +795,14 @@ void ABLAIController::TickCombat(float DeltaTime)
 				SetAction(EBLCombatAction::Hold);
 				StopMovement();
 				// Sin cobertura y lejos: acercarse un poco
-				if (FVector::Dist(E->GetActorLocation(), LastKnownLocation) > 2800.f)
+				if (!E->IsStatic() && FVector::Dist(E->GetActorLocation(), LastKnownLocation) > 2800.f)
 				{
 					MoveToPoint(E->GetActorLocation() + (LastKnownLocation - E->GetActorLocation()).GetSafeNormal() * 800.f, true);
 				}
 			}
 		}
-		TickShooting(DeltaTime, !bReloading && S->RequestAttackToken(this));
+		// La ametralladora no espera turno: su trabajo es no dejarte asomar
+		TickShooting(DeltaTime, !bReloading && (E->IsGunner() || E->IsCorvane() || S->RequestAttackToken(this)));
 		break;
 	}
 	case EBLCombatAction::MoveToCover:
@@ -830,7 +865,7 @@ void ABLAIController::TickCombat(float DeltaTime)
 			}
 			W->SetTriggerHeld(false);
 			E->SetAim(LastKnownLocation + FVector(0.f, 0.f, 25.f), true);
-			if (PhaseTimer <= 0.f && !bReloading && S->RequestAttackToken(this))
+			if (PhaseTimer <= 0.f && !bReloading && (E->IsCorvane() || S->RequestAttackToken(this)))
 			{
 				// Asomarse: ponerse de pie o salir al lado
 				if (C->FindFirePosition(TargetEye(), FirePosition, bFireStand))
@@ -898,6 +933,24 @@ void ABLAIController::Tick(float DeltaTime)
 	}
 	StateTime += DeltaTime;
 	TickPerception(DeltaTime);
+	// Aturdido por una carga de brecha: ni dispara ni se mueve (se tapa)
+	if (StunTime > 0.f)
+	{
+		StunTime -= DeltaTime;
+		E->GetWeapon()->SetTriggerHeld(false);
+		StopMovement();
+		E->SetCrouchTarget(true);
+		E->SetAim(E->GetActorLocation() + E->GetActorForwardVector() * 300.f + FVector(0.f, 0.f, -150.f), false);
+		return;
+	}
+	if (E->IsOperator() && State == EBLAIState::Combat)
+	{
+		TickOperatorGrenade(DeltaTime);
+	}
+	if (TickGrenadeEscape(DeltaTime))
+	{
+		return;   // huyendo de una granada: lo demás espera
+	}
 	switch (State)
 	{
 	case EBLAIState::Patrol: TickPatrol(DeltaTime); break;
@@ -918,4 +971,106 @@ void ABLAIController::Tick(float DeltaTime)
 			DrawDebugLine(GetWorld(), E->GetActorLocation(), Cover->GetActorLocation(), FColor::Green, false, 0.f, 0, 1.5f);
 		}
 	}
+}
+
+void ABLAIController::Stun(float Seconds)
+{
+	StunTime = FMath::Max(StunTime, Seconds);
+	UE_LOG(LogBlackline, Log, TEXT("[AI] %s aturdido %.1f s"), *GetNameSafe(GetPawn()), Seconds);
+}
+
+void ABLAIController::TickOperatorGrenade(float DeltaTime)
+{
+	// El operador saca al jugador de la cobertura: si lleva un rato escondido a media distancia, granada
+	GrenadeCooldown -= DeltaTime;
+	ABLEnemyCharacter* E = Enemy();
+	const float Dist = FVector::Dist(E->GetActorLocation(), LastKnownLocation);
+	if (GrenadesLeft <= 0 || GrenadeCooldown > 0.f || bTargetVisible || TimeSinceSeen < 2.5f || TimeSinceSeen > 10.f || Dist < 800.f || Dist > 2600.f)
+	{
+		return;
+	}
+	const FVector Start = E->GetActorLocation() + FVector(0.f, 0.f, 70.f) + E->GetActorForwardVector() * 40.f;
+	FVector Velocity;
+	if (!UGameplayStatics::SuggestProjectileVelocity_CustomArc(this, Velocity, Start, LastKnownLocation + FVector(0.f, 0.f, 20.f), 0.f, 0.55f))
+	{
+		GrenadeCooldown = 2.f;
+		return;
+	}
+	FActorSpawnParameters P;
+	P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	P.Instigator = E;
+	if (ABLGrenade* G = GetWorld()->SpawnActor<ABLGrenade>(ABLGrenade::StaticClass(), Start, FRotator::ZeroRotator, P))
+	{
+		G->Launch(Velocity, this, 2.6f);
+		--GrenadesLeft;
+		++GrenadesThrown;
+		GrenadeCooldown = FMath::FRandRange(9.f, 14.f);
+		UE_LOG(LogBlackline, Log, TEXT("[AI] %s lanza una granada a %.0f m"), *GetNameSafe(E), Dist / 100.f);
+	}
+}
+
+bool ABLAIController::TickGrenadeEscape(float DeltaTime)
+{
+	ABLEnemyCharacter* E = Enemy();
+	if (EscapeTime > 0.f)
+	{
+		EscapeTime -= DeltaTime;
+		if (EscapeTime <= 0.f)
+		{
+			// Pasada la explosión vuelve a lo suyo (en combate busca otra cobertura)
+			if (State == EBLAIState::Combat)
+			{
+				SetAction(EBLCombatAction::None);
+			}
+		}
+		return EscapeTime > 0.f;
+	}
+	for (const TWeakObjectPtr<ABLGrenade>& G : ABLGrenade::GetLive())
+	{
+		if (!G.IsValid() || G->HasExploded() || G->bSmoke || EscapedGrenades.Contains(G))
+		{
+			continue;
+		}
+		const FVector GL = G->GetActorLocation();
+		const float Dist = FVector::Dist(GL, E->GetActorLocation());
+		// La ve o la oye rebotar: a menos de 7 m y en el último segundo y medio... o casi a los pies
+		if (Dist < 700.f && (G->GetTimeLeft() < 2.6f || Dist < 300.f))
+		{
+			EscapedGrenades.Add(G);
+			FVector Away = (E->GetActorLocation() - GL).GetSafeNormal2D();
+			if (Away.IsNearlyZero())
+			{
+				Away = FMath::VRand().GetSafeNormal2D();
+			}
+			FVector Dest = E->GetActorLocation() + Away * 900.f;
+			if (const UNavigationSystemV1* Nav = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()))
+			{
+				FNavLocation Out;
+				if (Nav->ProjectPointToNavigation(Dest, Out, FVector(400.f, 400.f, 200.f)))
+				{
+					Dest = Out.Location;
+				}
+			}
+			E->GetWeapon()->SetTriggerHeld(false);
+			E->SetCrouchTarget(false);
+			if (UBLSquadSubsystem* S = Squad())
+			{
+				S->ReleaseAttackToken(this);
+				S->ReleaseCover(this);
+			}
+			bAtCover = false;
+			bPeeking = false;
+			MoveToPoint(Dest, true);
+			EscapeTime = FMath::Max(G->GetTimeLeft() + 0.6f, 1.2f);
+			++GrenadeEscapes;
+			Bark(EBLBark::Grenade, TEXT("¡Granada!"));
+			// Si ya estaba en guardia, ahora sabe dónde está el que la tiró
+			if (State != EBLAIState::Combat && G->GetInstigator())
+			{
+				EnterCombat(G->GetInstigator(), G->GetInstigator()->GetActorLocation(), true);
+			}
+			return true;
+		}
+	}
+	return false;
 }

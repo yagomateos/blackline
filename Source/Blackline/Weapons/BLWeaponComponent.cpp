@@ -68,8 +68,103 @@ const UBLWeaponData* UBLWeaponComponent::GetWeaponData() const
 
 float UBLWeaponComponent::GetEquipFraction() const
 {
+	if (PendingSlot != INDEX_NONE)
+	{
+		return HolsterDuration > 0.f ? FMath::Clamp(1.f - HolsterRemaining / HolsterDuration, 0.f, 1.f) : 1.f;
+	}
 	const UBLWeaponData* Data = GetWeaponData();
 	return Data && Data->EquipTime > 0.f ? FMath::Clamp(EquipRemaining / Data->EquipTime, 0.f, 1.f) : 0.f;
+}
+
+bool UBLWeaponComponent::SwitchToSlot(int32 Index)
+{
+	const UBLWeaponData* Data = GetWeaponData();
+	if (!Inventory.IsValidIndex(Index) || !Data)
+	{
+		return false;
+	}
+	if (PendingSlot != INDEX_NONE)
+	{
+		if (Index == CurrentIndex)
+		{
+			// Arrepentido a medio bajar: sube otra vez desde donde está
+			EquipRemaining = GetEquipFraction() * Data->EquipTime;
+			PendingSlot = INDEX_NONE;
+			return true;
+		}
+		PendingSlot = Index;
+		return true;
+	}
+	if (Index == CurrentIndex)
+	{
+		return false;
+	}
+	CancelReload();
+	// Si aún estaba subiendo, empieza a bajar desde esa altura
+	const float Lowered = GetEquipFraction();
+	EquipRemaining = 0.f;
+	HolsterDuration = FMath::Max(Data->HolsterTime, 0.05f);
+	HolsterRemaining = HolsterDuration * (1.f - Lowered);
+	PendingSlot = Index;
+	bSemiLatch = false;
+	ShotsInBurst = 0;
+	if (FX)
+	{
+		FX->PlayHandling(Data, 0.7f);
+	}
+	return true;
+}
+
+int32 UBLWeaponComponent::FindWeapon(const UBLWeaponData* Data) const
+{
+	return Inventory.IndexOfByPredicate([Data](const FBLWeaponSlot& Slot) { return Slot.Data == Data; });
+}
+
+int32 UBLWeaponComponent::PickUpWeapon(const FBLWeaponSlot& NewSlot, int32 ReplaceIndex)
+{
+	if (!NewSlot.Data)
+	{
+		return INDEX_NONE;
+	}
+	if (Inventory.IsValidIndex(ReplaceIndex))
+	{
+		// La que se suelta desaparece de la mano y la nueva sube desde abajo
+		CancelReload();
+		PendingSlot = INDEX_NONE;
+		Inventory[ReplaceIndex] = NewSlot;
+		EquipSlot(ReplaceIndex);
+		OnWeaponSwitched.Broadcast();
+		return ReplaceIndex;
+	}
+	Inventory.Add(NewSlot);
+	const int32 Index = Inventory.Num() - 1;
+	if (!SwitchToSlot(Index))
+	{
+		EquipSlot(Index);
+	}
+	return Index;
+}
+
+int32 UBLWeaponComponent::AddReserveAmmo(int32 Index, int32 Amount)
+{
+	if (!Inventory.IsValidIndex(Index) || !Inventory[Index].Data)
+	{
+		return 0;
+	}
+	FBLWeaponSlot& Slot = Inventory[Index];
+	const int32 Taken = FMath::Clamp(Slot.Data->MaxReserveAmmo - Slot.Reserve, 0, FMath::Max(Amount, 0));
+	Slot.Reserve += Taken;
+	return Taken;
+}
+
+bool UBLWeaponComponent::CycleWeapon()
+{
+	if (Inventory.Num() < 2)
+	{
+		return false;
+	}
+	const int32 From = PendingSlot != INDEX_NONE ? PendingSlot : CurrentIndex;
+	return SwitchToSlot((From + 1) % Inventory.Num());
 }
 
 int32 UBLWeaponComponent::GetMagazine() const
@@ -114,6 +209,9 @@ void UBLWeaponComponent::EquipSlot(int32 Index)
 	ShotTimer = 0.f;
 	Bloom = 0.f;
 	ShotsInBurst = 0;
+	CycleElapsed = -1.f;
+	bCasingPending = false;
+	bReloadQueued = false;
 
 	if (IBLWeaponOwner* WeaponOwner = GetWeaponOwner())
 	{
@@ -130,6 +228,8 @@ void UBLWeaponComponent::SetTriggerHeld(bool bHeld)
 	if (bHeld && !bTriggerHeld)
 	{
 		bDryFiredThisPress = false;
+		bTriggerPressedDuringReload = bReloading;
+		bReloadQueued = false;  // apretar el gatillo anula la recarga pendiente
 		if (IBLWeaponOwner* WeaponOwner = GetWeaponOwner())
 		{
 			WeaponOwner->OnWeaponTriggerPressed();
@@ -151,19 +251,39 @@ bool UBLWeaponComponent::StartReload()
 		return false;
 	}
 	const UBLWeaponData* Data = Slot->Data;
-	const int32 Capacity = Data->MagazineSize + (Data->bChamberRound && Slot->Magazine > 0 ? 1 : 0);
+	const bool bShells = Data->ReloadStyle == EBLReloadStyle::Shells;
+	// Cartucho a cartucho: el de la recámara se puede reponer siempre (primero por la ventana si estaba vacía)
+	const int32 Capacity = Data->MagazineSize + (Data->bChamberRound && (bShells || Slot->Magazine > 0) ? 1 : 0);
 	if (Slot->Magazine >= Capacity || (Slot->Reserve <= 0 && !bInfiniteReserve))
 	{
 		return false;
 	}
+	if (CycleElapsed >= 0.f && CycleElapsed < Data->GetShotInterval())
+	{
+		bReloadQueued = true;  // aún bombeando: recarga en cuanto termine
+		return false;
+	}
+	bReloadQueued = false;
 
 	bReloading = true;
 	bReloadEmpty = Slot->Magazine == 0;
 	bAmmoInserted = false;
+	bTriggerPressedDuringReload = false;
 	ReloadElapsed = 0.f;
-	ReloadDuration = bReloadEmpty ? Data->EmptyReloadTime : Data->ReloadTime;
 	NextReloadSound = 0;
 	ShotsInBurst = 0;
+	if (bShells)
+	{
+		const int32 Needed = Capacity - Slot->Magazine;
+		ShellCount = bInfiniteReserve ? Needed : FMath::Min(Needed, Slot->Reserve);
+		ShellsDone = 0;
+		bPortLoad = bReloadEmpty;
+		ReloadDuration = GetShellPhaseStart(ShellCount - (bPortLoad ? 1 : 0)) + Data->ShellReloadEndTime;
+	}
+	else
+	{
+		ReloadDuration = bReloadEmpty ? Data->EmptyReloadTime : Data->ReloadTime;
+	}
 
 	if (IBLWeaponOwner* WeaponOwner = GetWeaponOwner())
 	{
@@ -204,6 +324,11 @@ void UBLWeaponComponent::UpdateReload(float DeltaTime)
 	}
 	const UBLWeaponData* Data = Slot->Data;
 	ReloadElapsed += DeltaTime;
+	if (Data->ReloadStyle == EBLReloadStyle::Shells)
+	{
+		UpdateShellReload(Data, *Slot);
+		return;
+	}
 	const float T = ReloadElapsed / FMath::Max(ReloadDuration, 0.01f);
 
 	const TArray<FBLTimedSound>& Sounds = bReloadEmpty && Data->EmptyReloadSounds.Num() > 0 ? Data->EmptyReloadSounds : Data->ReloadSounds;
@@ -236,6 +361,188 @@ void UBLWeaponComponent::UpdateReload(float DeltaTime)
 	}
 }
 
+float UBLWeaponComponent::GetShellPhaseStart(int32 Shell) const
+{
+	const UBLWeaponData* Data = GetWeaponData();
+	return Data ? Data->ShellReloadStartTime + (bPortLoad ? Data->ShellPortLoadTime : 0.f) + Shell * Data->ShellInsertTime : 0.f;
+}
+
+EBLShellReloadPhase UBLWeaponComponent::GetShellReloadPhase(float& OutAlpha, int32& OutShell) const
+{
+	const UBLWeaponData* Data = GetWeaponData();
+	OutAlpha = 0.f;
+	OutShell = INDEX_NONE;
+	if (!bReloading || !Data || Data->ReloadStyle != EBLReloadStyle::Shells)
+	{
+		return EBLShellReloadPhase::None;
+	}
+	float T = ReloadElapsed;
+	if (T < Data->ShellReloadStartTime)
+	{
+		OutAlpha = T / FMath::Max(Data->ShellReloadStartTime, 0.01f);
+		return EBLShellReloadPhase::Raise;
+	}
+	T -= Data->ShellReloadStartTime;
+	if (bPortLoad)
+	{
+		if (T < Data->ShellPortLoadTime)
+		{
+			OutAlpha = T / FMath::Max(Data->ShellPortLoadTime, 0.01f);
+			return EBLShellReloadPhase::PortLoad;
+		}
+		T -= Data->ShellPortLoadTime;
+	}
+	const int32 Tube = ShellCount - (bPortLoad ? 1 : 0);
+	const float Ins = FMath::Max(Data->ShellInsertTime, 0.01f);
+	const int32 K = FMath::FloorToInt(T / Ins);
+	if (K < Tube)
+	{
+		OutShell = K;
+		OutAlpha = (T - K * Ins) / Ins;
+		return EBLShellReloadPhase::Shell;
+	}
+	OutAlpha = FMath::Clamp((T - Tube * Ins) / FMath::Max(Data->ShellReloadEndTime, 0.01f), 0.f, 1.f);
+	return EBLShellReloadPhase::Lower;
+}
+
+/** Fracción de la fase de carga por la ventana en que se cierra la corredera. */
+static constexpr float PortLoadCloseAlpha = 0.72f;
+
+bool UBLWeaponComponent::IsReloadActionOpen() const
+{
+	const UBLWeaponData* Data = GetWeaponData();
+	if (!bReloading || !Data)
+	{
+		return false;
+	}
+	if (Data->ReloadStyle == EBLReloadStyle::Shells)
+	{
+		return bPortLoad && ReloadElapsed < Data->ShellReloadStartTime + Data->ShellPortLoadTime * PortLoadCloseAlpha;
+	}
+	return bReloadEmpty && GetReloadProgress() < Data->BoltReleaseTime;
+}
+
+void UBLWeaponComponent::UpdateShellReload(const UBLWeaponData* Data, FBLWeaponSlot& Slot)
+{
+	// Sonidos: ReloadSounds en la fracción de la fase de subida, EmptyReloadSounds en la de carga por la ventana
+	const int32 NumRaise = Data->ReloadSounds.Num();
+	while (true)
+	{
+		const bool bRaise = NextReloadSound < NumRaise;
+		const TArray<FBLTimedSound>& List = bRaise ? Data->ReloadSounds : Data->EmptyReloadSounds;
+		const int32 Index = bRaise ? NextReloadSound : NextReloadSound - NumRaise;
+		if (!List.IsValidIndex(Index) || (!bRaise && !bPortLoad))
+		{
+			break;
+		}
+		const float At = bRaise ? List[Index].Time * Data->ShellReloadStartTime
+			: Data->ShellReloadStartTime + List[Index].Time * Data->ShellPortLoadTime;
+		if (ReloadElapsed < At)
+		{
+			break;
+		}
+		if (FX)
+		{
+			FX->PlayWeaponSound(List[Index].Sound);
+		}
+		++NextReloadSound;
+	}
+
+	// Cada cartucho entra en su momento (el de la ventana, al 40 % de su fase)
+	while (ShellsDone < ShellCount)
+	{
+		const int32 Tube = ShellsDone - (bPortLoad ? 1 : 0);
+		const float At = Tube < 0 ? Data->ShellReloadStartTime + Data->ShellPortLoadTime * 0.4f
+			: GetShellPhaseStart(Tube) + Data->ShellInsertTime * Data->ReloadAmmoInsertTime;
+		if (ReloadElapsed < At)
+		{
+			break;
+		}
+		++ShellsDone;
+		++Slot.Magazine;
+		if (!bInfiniteReserve)
+		{
+			Slot.Reserve = FMath::Max(0, Slot.Reserve - 1);
+		}
+		if (FX && Tube >= 0)
+		{
+			FX->PlayWeaponSound(UBLWeaponData::PickRandom(Data->ShellInsertSounds));
+		}
+	}
+
+	// Disparar interrumpe (cuando la recámara ya está cerrada con un cartucho)
+	if (bTriggerPressedDuringReload && Slot.Magazine > 0 && !IsReloadActionOpen())
+	{
+		bTriggerPressedDuringReload = false;
+		InterruptShellReload();
+	}
+
+	if (ReloadElapsed >= ReloadDuration)
+	{
+		FinishReload();
+	}
+}
+
+void UBLWeaponComponent::InterruptShellReload()
+{
+	const UBLWeaponData* Data = GetWeaponData();
+	float Alpha;
+	int32 Shell;
+	const EBLShellReloadPhase Phase = GetShellReloadPhase(Alpha, Shell);
+	if (!Data || Phase == EBLShellReloadPhase::Lower || Phase == EBLShellReloadPhase::None)
+	{
+		return;
+	}
+	// El cartucho que estaba en la mano vuelve al cinturón; el arma baja desde donde está
+	ShellCount = ShellsDone;
+	const float LowerStart = GetShellPhaseStart(ShellCount - (bPortLoad ? 1 : 0));
+	const float End = Data->ShellReloadEndTime;
+	ReloadElapsed = Phase == EBLShellReloadPhase::Raise ? LowerStart + End * (1.f - Alpha) : LowerStart;
+	ReloadDuration = LowerStart + End;
+}
+
+void UBLWeaponComponent::UpdateCycle(float DeltaTime, const UBLWeaponData* Data)
+{
+	if (CycleElapsed < 0.f)
+	{
+		return;
+	}
+	CycleElapsed += DeltaTime;
+	const float Interval = Data->GetShotInterval();
+	while (Data->CycleSounds.IsValidIndex(NextCycleSound) && CycleElapsed >= Data->CycleSounds[NextCycleSound].Time * Interval)
+	{
+		if (FX)
+		{
+			FX->PlayWeaponSound(Data->CycleSounds[NextCycleSound].Sound);
+		}
+		++NextCycleSound;
+	}
+	if (bCasingPending && CycleElapsed >= Data->CasingEjectTime * Interval)
+	{
+		bCasingPending = false;
+		if (FX)
+		{
+			FX->EjectCasing(Data);
+		}
+	}
+	if (CycleElapsed >= Interval && !bCasingPending && !Data->CycleSounds.IsValidIndex(NextCycleSound))
+	{
+		CycleElapsed = -1.f;
+		if (bReloadQueued)
+		{
+			bReloadQueued = false;
+			StartReload();
+		}
+	}
+}
+
+float UBLWeaponComponent::GetPelletCone() const
+{
+	const UBLWeaponData* Data = GetWeaponData();
+	const IBLWeaponOwner* WeaponOwner = GetWeaponOwner();
+	return Data && WeaponOwner ? FMath::Lerp(Data->PelletSpread, Data->PelletAimSpread, WeaponOwner->GetWeaponAimAlpha()) : 0.f;
+}
+
 bool UBLWeaponComponent::CanFireNow() const
 {
 	const FBLWeaponSlot* Slot = CurrentSlot();
@@ -259,20 +566,22 @@ float UBLWeaponComponent::GetCurrentSpread() const
 	if (const APawn* Pawn = Cast<APawn>(GetOwner()))
 	{
 		const float Speed = Pawn->GetVelocity().Size2D();
-		Spread += Data->MoveSpread * FMath::Clamp(Speed / 420.f, 0.f, 1.5f) * (1.f - Aim * 0.7f);
+		// En ADS moverse apenas abre el cono (se apunta andando despacio)
+		Spread += Data->MoveSpread * FMath::Clamp(Speed / 420.f, 0.f, 1.5f) * (1.f - Aim * 0.85f);
 		if (Pawn->GetMovementComponent() && Pawn->GetMovementComponent()->IsFalling())
 		{
 			Spread += Data->AirSpread;
 		}
 	}
 	Spread += Bloom * FMath::Lerp(1.f, Data->AimBloomMultiplier, Aim);
-	return Spread;
+	return Spread + GetPelletCone();
 }
 
 void UBLWeaponComponent::RestoreInventory(const TArray<FBLWeaponSlot>& Snapshot, int32 EquipIndex)
 {
 	SetTriggerHeld(false);
 	CancelReload();
+	PendingSlot = INDEX_NONE;
 	Inventory = Snapshot;
 	PendingRecoil = FVector2D::ZeroVector;
 	RecoverablePitch = 0.f;
@@ -317,54 +626,94 @@ void UBLWeaponComponent::FireShot()
 	++ShotsFired;
 	TimeSinceShot = 0.f;
 
-	// ---- Trazado ----
+	// ---- Trazado: un rayo por perdigón (fusil y pistola: uno). El cono del disparo lleva la dispersión normal y
+	//      cada perdigón se abre además en el cono propio del arma ----
 	FVector Origin, Direction;
 	WeaponOwner->GetWeaponAimView(Origin, Direction);
-	const float SpreadRad = FMath::DegreesToRadians(GetCurrentSpread());
+	const float PelletCone = GetPelletCone();
+	const float SpreadRad = FMath::DegreesToRadians(FMath::Max(GetCurrentSpread() - PelletCone, 0.f));
 	const FVector ShotDir = SpreadRad > KINDA_SMALL_NUMBER ? FMath::VRandCone(Direction, SpreadRad) : Direction;
-	const FVector End = Origin + ShotDir * Data->MaxRange;
+	const float PelletRad = FMath::DegreesToRadians(PelletCone);
 
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(BLWeaponTrace), true, GetOwner());
 	Params.bReturnPhysicalMaterial = true;
-	FHitResult Hit;
-	GetWorld()->LineTraceSingleByChannel(Hit, Origin, End, ECC_BLWeapon, Params);
-	if (!Hit.bBlockingHit)
-	{
-		Hit.TraceStart = Origin;
-		Hit.TraceEnd = End;
-		Hit.Location = Hit.ImpactPoint = End;
-	}
+	APawn* ShooterPawn = Cast<APawn>(GetOwner());
 
-	if (CVarDebugTraces.GetValueOnGameThread())
+	// Daño por blanco: los perdigones que alcanzan a la misma víctima cuentan como un impacto en el hitmarker
+	struct FTargetHit
 	{
-		DrawDebugLine(GetWorld(), Origin, Hit.ImpactPoint, FColor::Orange, false, 2.f, 0, 0.3f);
-		DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 6.f, FColor::Red, false, 2.f);
+		UBLHealthComponent* Health = nullptr;
+		float HealthBefore = 0.f;
+		EBLHitZone Zone = EBLHitZone::Torso;
+	};
+	TArray<FTargetHit, TInlineAllocator<4>> Targets;
+	FHitResult FirstHit;
+	const int32 Pellets = FMath::Max(Data->PelletCount, 1);
+	LastPelletHits = 0;
+	for (int32 Pellet = 0; Pellet < Pellets; ++Pellet)
+	{
+		const FVector Dir = Pellets > 1 && PelletRad > KINDA_SMALL_NUMBER ? FMath::VRandCone(ShotDir, PelletRad) : ShotDir;
+		const FVector End = Origin + Dir * Data->MaxRange;
+		FHitResult Hit;
+		BLDamage::WeaponTrace(GetWorld(), Hit, Origin, End, Params);
+		if (!Hit.bBlockingHit)
+		{
+			Hit.TraceStart = Origin;
+			Hit.TraceEnd = End;
+			Hit.Location = Hit.ImpactPoint = End;
+		}
+		if (Pellet == 0)
+		{
+			FirstHit = Hit;
+		}
+		LastPelletHits += Hit.bBlockingHit ? 1 : 0;
+
+		if (CVarDebugTraces.GetValueOnGameThread())
+		{
+			DrawDebugLine(GetWorld(), Origin, Hit.ImpactPoint, FColor::Orange, false, 2.f, 0, 0.3f);
+			DrawDebugPoint(GetWorld(), Hit.ImpactPoint, 6.f, FColor::Red, false, 2.f);
+		}
+
+		// ---- Daño (sin fuego amigo entre la IA: las balas de un miliciano no hieren a otro) ----
+		const APawn* HitPawn = Hit.GetActor() ? Cast<APawn>(Hit.GetActor()) : nullptr;
+		const bool bFriendlyAI = ShooterPawn && HitPawn && !ShooterPawn->IsPlayerControlled() && !HitPawn->IsPlayerControlled();
+		if (Hit.bBlockingHit && Hit.GetActor() && !bFriendlyAI)
+		{
+			UBLHealthComponent* TargetHealth = Hit.GetActor()->FindComponentByClass<UBLHealthComponent>();
+			if (TargetHealth && !TargetHealth->IsDead())
+			{
+				FTargetHit* Entry = Targets.FindByPredicate([TargetHealth](const FTargetHit& T) { return T.Health == TargetHealth; });
+				const EBLHitZone Zone = BLDamage::ZoneFromBone(Hit.BoneName);
+				if (!Entry)
+				{
+					Entry = &Targets.AddDefaulted_GetRef();
+					Entry->Health = TargetHealth;
+					Entry->HealthBefore = TargetHealth->GetHealth();
+					Entry->Zone = Zone;
+				}
+				else if (Zone == EBLHitZone::Head)
+				{
+					Entry->Zone = Zone;  // el hitmarker enseña la mejor zona
+				}
+			}
+			UGameplayStatics::ApplyPointDamage(Hit.GetActor(), ComputeDamage(Hit, Hit.Distance), Dir, Hit,
+				ShooterPawn ? ShooterPawn->GetController() : nullptr, GetOwner(), UDamageType::StaticClass());
+		}
+		if (FX && Hit.bBlockingHit)
+		{
+			FX->PlayImpact(Data, Hit);
+		}
+	}
+	for (const FTargetHit& T : Targets)
+	{
+		OnHitConfirmed.Broadcast(T.Zone, T.HealthBefore - T.Health->GetHealth(), T.Health->IsDead());
 	}
 
 	// ---- Ruido para la IA: el disparo se oye lejos; los impactos se notan cerca ("me están disparando") ----
 	UAISense_Hearing::ReportNoiseEvent(GetWorld(), Origin, 1.f, GetOwner(), Data->NoiseRange, FName("Disparo"));
-	if (Hit.bBlockingHit)
+	if (FirstHit.bBlockingHit)
 	{
-		UAISense_Hearing::ReportNoiseEvent(GetWorld(), Hit.ImpactPoint, 0.6f, GetOwner(), Data->ImpactNoiseRange, FName("Impacto"));
-	}
-
-	// ---- Daño (sin fuego amigo entre la IA: las balas de un miliciano no hieren a otro) ----
-	const APawn* ShooterPawn = Cast<APawn>(GetOwner());
-	const APawn* HitPawn = Hit.GetActor() ? Cast<APawn>(Hit.GetActor()) : nullptr;
-	const bool bFriendlyAI = ShooterPawn && HitPawn && !ShooterPawn->IsPlayerControlled() && !HitPawn->IsPlayerControlled();
-	if (Hit.bBlockingHit && Hit.GetActor() && !bFriendlyAI)
-	{
-		const float Damage = ComputeDamage(Hit, Hit.Distance);
-		APawn* Pawn = Cast<APawn>(GetOwner());
-		UBLHealthComponent* TargetHealth = Hit.GetActor()->FindComponentByClass<UBLHealthComponent>();
-		const bool bWasAlive = TargetHealth && !TargetHealth->IsDead();
-		const float HealthBefore = TargetHealth ? TargetHealth->GetHealth() : 0.f;
-		UGameplayStatics::ApplyPointDamage(Hit.GetActor(), Damage, ShotDir, Hit,
-			Pawn ? Pawn->GetController() : nullptr, GetOwner(), UDamageType::StaticClass());
-		if (bWasAlive)
-		{
-			OnHitConfirmed.Broadcast(BLDamage::ZoneFromBone(Hit.BoneName), HealthBefore - TargetHealth->GetHealth(), TargetHealth->IsDead());
-		}
+		UAISense_Hearing::ReportNoiseEvent(GetWorld(), FirstHit.ImpactPoint, 0.6f, GetOwner(), Data->ImpactNoiseRange, FName("Impacto"));
 	}
 
 	// ---- Balas de la IA que pasan rozando al jugador: chasquido supersónico ----
@@ -372,7 +721,7 @@ void UBLWeaponComponent::FireShot()
 	{
 		if (UBLAudioSubsystem* Audio = UBLAudioSubsystem::Get(this))
 		{
-			Audio->NotifyBulletPass(Origin, Hit.ImpactPoint, Hit.GetActor());
+			Audio->NotifyBulletPass(Origin, FirstHit.ImpactPoint, FirstHit.GetActor());
 		}
 	}
 
@@ -391,16 +740,18 @@ void UBLWeaponComponent::FireShot()
 	if (FX)
 	{
 		FX->PlayFire(Data);
-		if (Hit.bBlockingHit)
-		{
-			FX->PlayImpact(Data, Hit);
-		}
 	}
-	OnShot.Broadcast(Hit);
+	OnShot.Broadcast(FirstHit);
 
-	if (Data->FireMode == EBLFireMode::Semi)
+	if (Data->FireMode != EBLFireMode::Auto)
 	{
 		bSemiLatch = true;
+	}
+	if (Data->FireMode == EBLFireMode::Pump || Data->CasingEjectTime > 0.f)
+	{
+		CycleElapsed = 0.f;
+		NextCycleSound = 0;
+		bCasingPending = Data->CasingEjectTime > 0.f;
 	}
 }
 
@@ -468,16 +819,35 @@ void UBLWeaponComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	const UBLWeaponData* Data = Slot->Data;
 
 	EquipRemaining = FMath::Max(0.f, EquipRemaining - DeltaTime);
+	if (PendingSlot != INDEX_NONE)
+	{
+		HolsterRemaining -= DeltaTime;
+		if (HolsterRemaining <= 0.f)
+		{
+			// Abajo del todo: cambia de malla (fuera de la vista) y sube la nueva
+			const int32 NewIndex = PendingSlot;
+			PendingSlot = INDEX_NONE;
+			EquipSlot(NewIndex);
+			if (FX)
+			{
+				FX->PlayHandling(Inventory[NewIndex].Data, 0.8f);
+			}
+			OnWeaponSwitched.Broadcast();
+			return;
+		}
+	}
 	UnblockedTime = WeaponOwner->IsWeaponBlocked() ? 0.f : UnblockedTime + DeltaTime;
 	Bloom = FMath::Max(0.f, Bloom - Data->BloomRecovery * DeltaTime * (bTriggerHeld ? 0.35f : 1.f));
 
 	UpdateReload(DeltaTime);
+	UpdateCycle(DeltaTime, Data);
 
 	// ---- Disparo: acumulador de tiempo para respetar la cadencia con cualquier frame rate ----
 	ShotTimer -= DeltaTime;
 	if (bTriggerHeld)
 	{
-		if (Slot->Magazine == 0 && !bReloading)
+		// (corredera: el gatillo que sigue apretado tras el último disparo no "chasca"; hace falta otra pulsación)
+		if (Slot->Magazine == 0 && !bReloading && PendingSlot == INDEX_NONE && !(Data->FireMode == EBLFireMode::Pump && bSemiLatch))
 		{
 			if (!bDryFiredThisPress)
 			{

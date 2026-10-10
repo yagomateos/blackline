@@ -15,14 +15,20 @@ namespace
 
 void ABLCharacter::SetInteractHeld(bool bHeld)
 {
-	// Con la misión completada, el botón de interacción reinicia
+	// Con la misión completada, el botón de interacción pasa a la siguiente misión (reiniciar: menú de pausa)
 	if (bHeld)
 	{
 		if (ABLMissionDirector* Director = ABLMissionDirector::Get(this); Director && Director->IsMissionComplete() && Director->GetCompleteAge() > 2.f)
 		{
-			Director->RestartMission();
+			Director->ContinueAfterMission();
 			return;
 		}
+	}
+	// Montado en la ametralladora: F la suelta
+	if (bHeld && IsMounted())
+	{
+		DismountGun();
+		return;
 	}
 	bInteractHeld = bHeld && !bDead;
 	if (!bInteractHeld)
@@ -40,7 +46,7 @@ void ABLCharacter::UpdateInteraction(float DeltaTime)
 {
 	// El objeto más centrado en la vista dentro del alcance (los objetos pequeños, como el disco, no exigen apuntar exacto)
 	ABLInteractable* Best = nullptr;
-	if (!bDead)
+	if (!bDead && !IsMounted())
 	{
 		const FVector Eye = Camera->GetComponentLocation();
 		const FVector Fwd = Camera->GetForwardVector();
@@ -51,7 +57,8 @@ void ABLCharacter::UpdateInteraction(float DeltaTime)
 			{
 				continue;
 			}
-			const FVector To = It->GetActorLocation() - Eye;
+			const FVector Target = It->GetInteractLocation();
+			const FVector To = Target - Eye;
 			const float Dist = To.Size();
 			const float Cos = FVector::DotProduct(To / FMath::Max(Dist, 1.f), Fwd);
 			if (Dist > InteractRange || Cos < BestCos)
@@ -60,7 +67,7 @@ void ABLCharacter::UpdateInteraction(float DeltaTime)
 			}
 			FCollisionQueryParams Q(SCENE_QUERY_STAT(BLInteract), false, this);
 			Q.AddIgnoredActor(*It);
-			if (GetWorld()->LineTraceTestByChannel(Eye, It->GetActorLocation(), ECC_Visibility, Q))
+			if (GetWorld()->LineTraceTestByChannel(Eye, Target, ECC_Visibility, Q))
 			{
 				continue;   // hay algo en medio
 			}

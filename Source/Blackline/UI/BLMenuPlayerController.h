@@ -37,7 +37,8 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	/** Carga la misión 1 empezando en la fase indicada (0 = inserción ... 4 = local de Varek). */
-	void StartMission(int32 StartPhase);
+	/** Despliega la misión (índice en BLMenuData::Missions) en su punto de inicio StartPhase (0 = el primero). */
+	void StartMission(int32 Mission, int32 StartPhase);
 	void QuitGame();
 	bool IsLoading() const { return LoadTimer >= 0.f; }
 
@@ -52,6 +53,7 @@ private:
 	float LoadTimer = -1.f;
 	int32 FramesShown = 0;
 	FString PendingLevelOptions;
+	FString PendingMap;
 
 	// Prueba automática del menú
 	struct FMenuStep { FString Name; float Duration; TFunction<void()> Begin; TFunction<bool(FString&)> Verify; };

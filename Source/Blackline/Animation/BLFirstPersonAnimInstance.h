@@ -24,6 +24,7 @@ struct FBLFirstPersonAnimState
 	FTransform WeaponInComponent = FTransform::Identity;
 	bool bHasWeapon = false;
 	FTransform HandGripRLocal = FTransform::Identity;  // socket HandGrip_R relativo a hand_r
+	FTransform RightGripInWeapon = FTransform::Identity;  // dónde va ese socket en espacio del arma (origen = puño)
 	FTransform HandGripLLocal = FTransform::Identity;  // socket HandGrip_L relativo a hand_l
 };
 
@@ -66,6 +67,9 @@ public:
 
 	/** Agarre de la mano izquierda en espacio de la malla del arma. bValid=false desactiva la IK. */
 	void SetLeftHandGrip(const FTransform& GripInWeapon, bool bValid);
+
+	/** Agarre de la mano derecha en espacio de la malla del arma (por defecto, el origen del arma). */
+	void SetRightHandGrip(const FTransform& GripInWeapon) { State.RightGripInWeapon = GripInWeapon; }
 
 	/** Transform del arma en espacio de componente (mano derecha al pistolete, izquierda al guardamanos). */
 	void SetWeaponTransform(const FTransform& WeaponInComponent, bool bValid);

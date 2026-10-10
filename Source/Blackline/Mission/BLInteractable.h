@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Mission/BLMissionTypes.h"
 #include "BLInteractable.generated.h"
 
 class UStaticMeshComponent;
@@ -22,8 +23,11 @@ class BLACKLINE_API ABLInteractable : public AActor
 public:
 	ABLInteractable();
 
-	bool CanInteract(const ABLCharacter* User) const { return bEnabled && !bUsed; }
-	void Use(ABLCharacter* User);
+	virtual bool CanInteract(const ABLCharacter* User) const { return bEnabled && !bUsed; }
+	/** Punto al que se mira para usarlo (las puertas: el centro de la hoja, no la bisagra). */
+	virtual FVector GetInteractLocation() const { return GetActorLocation(); }
+	/** Lo usa el jugador (las puertas lo redefinen: abrir, patada, carga de brecha). */
+	virtual void Use(ABLCharacter* User);
 	bool IsUsed() const { return bUsed; }
 
 	/** Texto de la acción: "Recoger el disco duro". */
@@ -34,14 +38,26 @@ public:
 	/** Si se recoge, la malla desaparece al usarlo. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact") bool bPickup = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact") TObjectPtr<USoundBase> UseSound;
+	/** Fotografiar (misión 2): obturador y destello en el HUD en vez del sonido de recoger. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact") bool bPhoto = false;
+	/** Radio al usarlo (lo reproduce el director: "Cuatro cuatro siete uno. Cajas sin marcas."). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact") TArray<FBLRadioLine> UseRadio;
+
+	/** Momento (segundos de mundo) de la última foto, para el destello del HUD; < 0 si no hay. */
+	static float GetLastPhotoTime() { return LastPhotoTime; }
+	static int32 GetPhotosTaken() { return PhotosTaken; }
 
 	UPROPERTY(BlueprintAssignable, Category = "Interact") FBLInteractSignature OnUsed;
 
 	UStaticMeshComponent* GetMesh() const { return Mesh; }
+
+	virtual void BeginPlay() override;
 
 protected:
 	UPROPERTY(VisibleAnywhere, Category = "Components") TObjectPtr<UStaticMeshComponent> Mesh;
 
 private:
 	bool bUsed = false;
+	static float LastPhotoTime;
+	static int32 PhotosTaken;
 };

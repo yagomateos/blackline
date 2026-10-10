@@ -27,6 +27,7 @@ namespace
 		switch (Bark)
 		{
 		case EBLBark::Hit: return 1.5f;
+		case EBLBark::Grenade: return 1.0f;
 		case EBLBark::ManDown: return 3.f;
 		case EBLBark::Reload: return 3.f;
 		case EBLBark::Contact: return 6.f;
@@ -50,7 +51,7 @@ bool UBLAudioSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 const TCHAR* UBLAudioSubsystem::BarkName(EBLBark Bark)
 {
 	static const TCHAR* Names[] = { TEXT("Suspicious"), TEXT("HeardShots"), TEXT("Contact"), TEXT("Hit"), TEXT("Reload"), TEXT("Flank"),
-		TEXT("Reposition"), TEXT("Chase"), TEXT("GiveUp"), TEXT("Lost"), TEXT("ManDown") };
+		TEXT("Reposition"), TEXT("Chase"), TEXT("GiveUp"), TEXT("Lost"), TEXT("ManDown"), TEXT("Grenade") };
 	static_assert(UE_ARRAY_COUNT(Names) == (int32)EBLBark::MAX, "Faltan nombres de barks");
 	return Names[(int32)Bark];
 }
@@ -159,7 +160,7 @@ UAudioComponent* UBLAudioSubsystem::PlayBark(AActor* Speaker, int32 VoiceIndex, 
 	const bool bAudible = GetListener(Listener, ListenerPawn) && FVector::Dist(Listener, Speaker->GetActorLocation()) < BarkAudibleDistance;
 	// Una frase cada vez y sin repetir la misma categoría en seguida (seis milicianos gritando "¡Contacto!" a la vez suena falso).
 	// Los gritos de dolor y las bajas no esperan turno
-	const bool bUrgent = Bark == EBLBark::Hit || Bark == EBLBark::ManDown;
+	const bool bUrgent = Bark == EBLBark::Hit || Bark == EBLBark::ManDown || Bark == EBLBark::Grenade;
 	if (!bAudible || (!bUrgent && Now - LastBarkTime < BarkGlobalGap) || Now - LastBarkByCategory[Cat] < CategoryGap(Bark))
 	{
 		++BarksSkipped;

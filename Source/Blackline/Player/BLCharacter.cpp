@@ -117,7 +117,7 @@ ABLCharacter::ABLCharacter(const FObjectInitializer& ObjectInitializer)
 	FirstPersonRig = CreateDefaultSubobject<UBLFirstPersonRigComponent>(TEXT("FirstPersonRig"));
 	Weapon = CreateDefaultSubobject<UBLWeaponComponent>(TEXT("Weapon"));
 	Health = CreateDefaultSubobject<UBLHealthComponent>(TEXT("Health")); // 100, 4 segmentos, regenera tras 4 s
-	Health->DamageTakenMultiplier = 0.55f; // dificultad "normal" provisional (menú de dificultad en la Fase 4)
+	Health->DamageTakenMultiplier = 0.55f; // "Veterano"; la dificultad elegida la aplica UBLUserSettings::ApplyToPlayer
 
 	// ---- Movimiento: rápido pero con inercia creíble ----
 	UCharacterMovementComponent* Move = GetCharacterMovement();
@@ -179,6 +179,11 @@ ABLCharacter::ABLCharacter(const FObjectInitializer& ObjectInitializer)
 	{
 		Weapon->StartingWeapons.Add(AR7);
 	}
+	// Secundaria (tecla 2): se lleva siempre, empieza en la funda
+	if (UBLWeaponData* P17 = LoadDefault<UBLWeaponData>(TEXT("/Game/Weapons/P17/DA_P17.DA_P17")))
+	{
+		Weapon->StartingWeapons.Add(P17);
+	}
 
 	MoveAction      = LoadDefault<UInputAction>(TEXT("/Game/Input/Actions/IA_Move.IA_Move"));
 	LookAction      = LoadDefault<UInputAction>(TEXT("/Game/Input/Actions/IA_Look.IA_Look"));
@@ -192,6 +197,12 @@ ABLCharacter::ABLCharacter(const FObjectInitializer& ObjectInitializer)
 	FireAction      = LoadDefault<UInputAction>(TEXT("/Game/Input/Actions/IA_Fire.IA_Fire"));
 	ReloadAction    = LoadDefault<UInputAction>(TEXT("/Game/Input/Actions/IA_Reload.IA_Reload"));
 	InteractAction  = LoadDefault<UInputAction>(TEXT("/Game/Input/Actions/IA_Interact.IA_Interact"));
+	GrenadeAction   = LoadDefault<UInputAction>(TEXT("/Game/Input/Actions/IA_Grenade.IA_Grenade"));
+	SwapWeaponAction      = LoadDefault<UInputAction>(TEXT("/Game/Input/Actions/IA_SwapWeapon.IA_SwapWeapon"));
+	PrimaryWeaponAction   = LoadDefault<UInputAction>(TEXT("/Game/Input/Actions/IA_WeaponPrimary.IA_WeaponPrimary"));
+	SecondaryWeaponAction = LoadDefault<UInputAction>(TEXT("/Game/Input/Actions/IA_WeaponSecondary.IA_WeaponSecondary"));
+	GrenadePinSound = LoadDefault<USoundBase>(TEXT("/Game/Audio/Weapons/Grenade/SW_Grenade_Pin.SW_Grenade_Pin"));
+	GrenadeThrowSound = LoadDefault<USoundBase>(TEXT("/Game/Audio/Weapons/Grenade/SW_Grenade_Throw.SW_Grenade_Throw"));
 }
 
 void ABLCharacter::BeginPlay()
@@ -286,6 +297,22 @@ void ABLCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 		Input->BindActionValueLambda(InteractAction, ETriggerEvent::Started, [this](const FInputActionValue&) { SetInteractHeld(true); });
 		Input->BindActionValueLambda(InteractAction, ETriggerEvent::Completed, [this](const FInputActionValue&) { SetInteractHeld(false); });
 	}
+	if (GrenadeAction)
+	{
+		Input->BindActionValueLambda(GrenadeAction, ETriggerEvent::Started, [this](const FInputActionValue&) { ThrowGrenade(); });
+	}
+	if (SwapWeaponAction)
+	{
+		Input->BindActionValueLambda(SwapWeaponAction, ETriggerEvent::Started, [this](const FInputActionValue&) { CycleWeapon(); });
+	}
+	if (PrimaryWeaponAction)
+	{
+		Input->BindActionValueLambda(PrimaryWeaponAction, ETriggerEvent::Started, [this](const FInputActionValue&) { SwitchWeapon(0); });
+	}
+	if (SecondaryWeaponAction)
+	{
+		Input->BindActionValueLambda(SecondaryWeaponAction, ETriggerEvent::Started, [this](const FInputActionValue&) { SwitchWeapon(1); });
+	}
 	if (LeanRightAction)
 	{
 		Input->BindActionValueLambda(LeanRightAction, ETriggerEvent::Started, [this](const FInputActionValue&) { SetLeanRightHeld(true); });
@@ -311,7 +338,7 @@ void ABLCharacter::LookInput(const FInputActionValue& Value)
 
 void ABLCharacter::DoMove(float Right, float Forward)
 {
-	if (bDead)
+	if (bDead || IsMounted())
 	{
 		return;
 	}
@@ -344,7 +371,7 @@ void ABLCharacter::DoLook(float Yaw, float Pitch)
 
 void ABLCharacter::DoJumpOrMantle()
 {
-	if (bDead)
+	if (bDead || IsMounted())
 	{
 		return;
 	}
@@ -371,7 +398,7 @@ void ABLCharacter::DoStopJump()
 
 void ABLCharacter::SetSprintHeld(bool bHeld)
 {
-	bSprintHeld = bHeld && !bDead;
+	bSprintHeld = bHeld && !bDead && !IsMounted();
 	if (bHeld && bIsCrouched)
 	{
 		UnCrouch();
@@ -405,6 +432,11 @@ void ABLCharacter::SetAimHeld(bool bHeld) { bAimHeld = bHeld && !bDead; }
 
 void ABLCharacter::SetFireHeld(bool bHeld)
 {
+	if (IsMounted())
+	{
+		MountGunTrigger(bHeld);
+		return;
+	}
 	if (Weapon)
 	{
 		Weapon->SetTriggerHeld(bHeld && !bDead);
@@ -413,7 +445,7 @@ void ABLCharacter::SetFireHeld(bool bHeld)
 
 void ABLCharacter::DoReload()
 {
-	if (bDead)
+	if (bDead || IsMounted())
 	{
 		return;
 	}
@@ -477,14 +509,22 @@ UBLFirstPersonAnimInstance* ABLCharacter::GetFirstPersonAnim() const
 
 void ABLCharacter::GetWeaponAimView(FVector& OutOrigin, FVector& OutDirection) const
 {
-	// Desde CameraRoot (sin bob ni impulsos visuales): el retroceso visual no afecta a la punteria
-	OutOrigin = CameraRoot->GetComponentLocation();
-	OutDirection = Controller ? Controller->GetControlRotation().Vector() : GetActorForwardVector();
+	// Desde la cámara que se ve: la bala va al centro de la pantalla, donde están la cruz y, en ADS, la mira.
+	// (Antes salía de CameraRoot, sin el golpe visual del retroceso ni el temblor: en ráfagas en ADS la mira
+	// y el impacto se separaban.) Fuera del control del jugador (muerte) se usa la rotación de control.
+	if (bDead || !Camera)
+	{
+		OutOrigin = CameraRoot->GetComponentLocation();
+		OutDirection = Controller ? Controller->GetControlRotation().Vector() : GetActorForwardVector();
+		return;
+	}
+	OutOrigin = Camera->GetComponentLocation();
+	OutDirection = Camera->GetForwardVector();
 }
 
 bool ABLCharacter::IsWeaponBlocked() const
 {
-	return bIsMantling || bIsSprinting || SprintAlpha > 0.35f;
+	return bIsMantling || bIsSprinting || SprintAlpha > 0.35f || GrenadeTimer >= 0.f;
 }
 
 void ABLCharacter::OnWeaponTriggerPressed()
@@ -503,14 +543,18 @@ void ABLCharacter::OnWeaponEquipped(const UBLWeaponData* Data)
 		WeaponMesh->SetSkeletalMeshAsset(Data->Mesh);
 	}
 	FirstPersonRig->ConfigureWeaponSight(Data->SightSocket, Data->SightLocalOffset, Data->ForwardAxis, Data->AimEyeDistance);
+	FirstPersonRig->ConfigureWeaponPoses(Data->Poses);
+	SetMagazineInHand(false);
 
 	if (UBLFirstPersonAnimInstance* Anim = GetFirstPersonAnim())
 	{
 		Anim->SetBaseAnim(Data->IdleAnim);
+		Anim->SetRightHandGrip(FTransform(Data->RightHandRotation, Data->RightHandOffset));
 		FTransform Grip;
 		const bool bGrip = GetRefPoseSocketTransform(Data->Mesh, Data->LeftHandSocket, Grip);
-		// Solo la posición: los huesos exportados desde Blender traen rotación y escala (x100) propias
-		Grip = FTransform(Grip.GetLocation());
+		// Solo la posición: los huesos exportados desde Blender traen rotación y escala (x100) propias.
+		// La orientación de la mano la da el arma (pistola: la palma abraza el puño por la izquierda)
+		Grip = FTransform(Data->LeftHandGripRotation, Grip.GetLocation());
 		Anim->SetLeftHandGrip(Grip, bGrip);
 		if (!bGrip)
 		{
@@ -539,11 +583,13 @@ void ABLCharacter::OnWeaponReloadStarted(const UBLWeaponData* Data, float Durati
 	// recarga de Epic son de tercera persona y sacan el arma de cámara. ReloadAnim queda para el cuerpo/IA.
 	bSprintHeld = false;
 	LastReloadProgress = 0.f;
+	LastShellPos = 0.f;
 }
 
 void ABLCharacter::OnWeaponReloadEnded(bool bCompleted)
 {
 	SetMagazineInHand(false);
+	SetShellInHand(nullptr, false);
 }
 
 void ABLCharacter::SetMagazineInHand(bool bInHand)
@@ -555,16 +601,7 @@ void ABLCharacter::SetMagazineInHand(bool bInHand)
 	}
 	if (bInHand)
 	{
-		if (!HandMagazine)
-		{
-			HandMagazine = NewObject<UStaticMeshComponent>(this, TEXT("HandMagazine"));
-			HandMagazine->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			HandMagazine->SetCastShadow(false);
-			HandMagazine->SetOnlyOwnerSee(true);
-			HandMagazine->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
-			HandMagazine->RegisterComponent();
-		}
-		HandMagazine->SetStaticMesh(Data->MagazineMesh);
+		EnsureHandMagazine()->SetStaticMesh(Data->MagazineMesh);
 		// Donde está ahora el cargador en el arma, pero colgando de la mano izquierda
 		const FTransform MagWorld(WeaponMesh->GetComponentQuat(), WeaponMesh->GetSocketLocation(Data->MagazineBone));
 		HandMagazine->AttachToComponent(FirstPersonMesh, FAttachmentTransformRules::KeepRelativeTransform, TEXT("hand_l"));
@@ -619,93 +656,106 @@ void ABLCharacter::UpdateProceduralWeaponActions(float DeltaTime)
 		const FVector MagBelow = Mag + MagAxis * 4.f + FVector(1.5f, 0.f, 0.f);
 		const FVector MagPulled = Mag + MagAxis * 15.f;
 		const FVector Pouch = Mag + FVector(9.f, -12.f, -38.f);              // portacargadores (fuera de cámara)
-		const FVector Handle = SocketOr(Data->ChargingHandleSocket, Data->ChargingHandleLocalOffset);
 		const FVector BoltCatch = FVector(2.4f, MagTop.Y - 6.f, MagTop.Z + 2.f); // retenida, lado izquierdo del cajón
 
 		// Línea de tiempo (fracción). Interpolación Catmull-Rom: trayectoria continua, sin paradas
 		TArray<TPair<float, FVector>, TInlineAllocator<16>> Keys;
-		Keys.Add({ 0.00f, Grip });
-		Keys.Add({ 0.09f, MagBelow });
-		Keys.Add({ 0.15f, Mag });               // agarra el cargador (se separa del arma)
-		Keys.Add({ 0.24f, MagPulled });         // tira a lo largo de su eje
-		Keys.Add({ 0.34f, Pouch });
-		Keys.Add({ 0.41f, Pouch + FVector(0.f, 3.f, 2.f) });  // coge el nuevo
-		Keys.Add({ In - 0.08f, MagPulled });    // lo alinea bajo el brocal
-		Keys.Add({ In, Mag });                   // lo mete
-		Keys.Add({ In + 0.04f, Mag - MagAxis * 1.2f });  // golpe en la base para asentarlo
-		if (bEmpty)
+		if (Data->ReloadStyle == EBLReloadStyle::Shells)
 		{
-			Keys.Add({ In + 0.08f, Mag + FVector(2.f, -2.f, 3.f) });
-			Keys.Add({ In + 0.12f, BoltCatch });  // golpe a la retenida: el cerrojo cierra
-			Keys.Add({ In + 0.17f, BoltCatch + FVector(1.f, 4.f, -2.f) });
-			Keys.Add({ 0.88f, Grip + FVector(0.f, -3.f, -4.f) });
-			Keys.Add({ 0.97f, Grip });
+			UpdateShellReload(Data, DeltaTime, ReloadPose, HandTarget, DynLoc, DynRot);
+		}
+		else if (Data->ReloadStyle == EBLReloadStyle::Pistol)
+		{
+			UpdatePistolReload(Data, P, Keys, DynLoc, DynRot);
 		}
 		else
 		{
-			Keys.Add({ 0.72f, Grip + FVector(0.f, -4.f, -5.f) });
-			Keys.Add({ 0.84f, Grip });
-		}
-		Keys.Add({ 1.01f, Grip });
-
-		HandTarget = Grip;
-		for (int32 k = 0; k + 1 < Keys.Num(); ++k)
-		{
-			if (P >= Keys[k].Key && P < Keys[k + 1].Key)
+			Keys.Add({ 0.00f, Grip });
+			Keys.Add({ 0.09f, MagBelow });
+			Keys.Add({ 0.15f, Mag });               // agarra el cargador (se separa del arma)
+			Keys.Add({ 0.24f, MagPulled });         // tira a lo largo de su eje
+			Keys.Add({ 0.34f, Pouch });
+			Keys.Add({ 0.41f, Pouch + FVector(0.f, 3.f, 2.f) });  // coge el nuevo
+			Keys.Add({ In - 0.08f, MagPulled });    // lo alinea bajo el brocal
+			Keys.Add({ In, Mag });                   // lo mete
+			Keys.Add({ In + 0.04f, Mag - MagAxis * 1.2f });  // golpe en la base para asentarlo
+			if (bEmpty)
 			{
-				const float A = (P - Keys[k].Key) / (Keys[k + 1].Key - Keys[k].Key);
-				const FVector& P0 = Keys[FMath::Max(k - 1, 0)].Value;
-				const FVector& P1 = Keys[k].Value;
-				const FVector& P2 = Keys[k + 1].Value;
-				const FVector& P3 = Keys[FMath::Min(k + 2, Keys.Num() - 1)].Value;
-				const float A2 = A * A, A3 = A2 * A;
-				HandTarget = 0.5f * ((2.f * P1) + (-P0 + P2) * A + (2.f * P0 - 5.f * P1 + 4.f * P2 - P3) * A2 + (-P0 + 3.f * P1 - 3.f * P2 + P3) * A3);
-				break;
+				Keys.Add({ In + 0.08f, Mag + FVector(2.f, -2.f, 3.f) });
+				Keys.Add({ In + 0.12f, BoltCatch });  // golpe a la retenida: el cerrojo cierra
+				Keys.Add({ In + 0.17f, BoltCatch + FVector(1.f, 4.f, -2.f) });
+				Keys.Add({ 0.88f, Grip + FVector(0.f, -3.f, -4.f) });
+				Keys.Add({ 0.97f, Grip });
 			}
+			else
+			{
+				Keys.Add({ 0.72f, Grip + FVector(0.f, -4.f, -5.f) });
+				Keys.Add({ 0.84f, Grip });
+			}
+			Keys.Add({ 1.01f, Grip });
+		}
+
+		if (Data->ReloadStyle != EBLReloadStyle::Shells)
+		{
+			HandTarget = EvalHandPath(Keys, P, Grip);
 		}
 		HandAlpha = 1.f;
-
-		// Movimiento del arma ligado a las acciones de la mano (espacio de cámara)
-		auto Bell = [P](float A, float B) { return P > A && P < B ? FMath::Sin(PI * (P - A) / (B - A)) : 0.f; };
-		DynRot.Roll += 9.f * Bell(0.13f, 0.30f);                 // el arma gira al tirar del cargador
-		DynLoc.Z -= 1.5f * Bell(0.13f, 0.28f);
-		DynRot.Pitch += 6.f * Bell(In - 0.12f, In + 0.04f);      // se inclina hacia la mano al meter el nuevo
-		DynRot.Roll -= 5.f * Bell(In - 0.1f, In + 0.05f);
-		if (bEmpty)
+		if (Data->ReloadStyle == EBLReloadStyle::Rifle)
 		{
-			DynRot.Yaw += 5.f * Bell(In + 0.06f, In + 0.2f);    // gira hacia la retenida
-		}
-
-		// Golpes: sacar, meter, asentar, cerrojo
-		auto Crossed = [this, P](float T) { return LastReloadProgress < T && P >= T; };
-		if (Crossed(0.15f))
-		{
-			SetMagazineInHand(true);
-			FirstPersonRig->AddWeaponKick(FVector(0.f, 0.f, -18.f), FRotator(-6.f, 0.f, 8.f));
-		}
-		if (Crossed(0.30f) || Crossed(0.80f))
-		{
-			if (UBLWeaponFXComponent* WFX = FindComponentByClass<UBLWeaponFXComponent>())
+			// Movimiento del arma ligado a las acciones de la mano (espacio de cámara)
+			auto Bell = [P](float A, float B) { return P > A && P < B ? FMath::Sin(PI * (P - A) / (B - A)) : 0.f; };
+			DynRot.Roll += 9.f * Bell(0.13f, 0.30f);                 // el arma gira al tirar del cargador
+			DynLoc.Z -= 1.5f * Bell(0.13f, 0.28f);
+			DynRot.Pitch += 6.f * Bell(In - 0.12f, In + 0.04f);      // se inclina hacia la mano al meter el nuevo
+			DynRot.Roll -= 5.f * Bell(In - 0.1f, In + 0.05f);
+			if (bEmpty)
 			{
-				WFX->PlayHandling(Data, 0.8f);  // roce de la mano con el equipo
+				DynRot.Yaw += 5.f * Bell(In + 0.06f, In + 0.2f);    // gira hacia la retenida
+			}
+
+			// Golpes: sacar, meter, asentar, cerrojo
+			auto Crossed = [this, P](float T) { return LastReloadProgress < T && P >= T; };
+			if (Crossed(0.15f))
+			{
+				SetMagazineInHand(true);
+				FirstPersonRig->AddWeaponKick(FVector(0.f, 0.f, -18.f), FRotator(-6.f, 0.f, 8.f));
+			}
+			if (Crossed(0.30f) || Crossed(0.80f))
+			{
+				if (UBLWeaponFXComponent* WFX = FindComponentByClass<UBLWeaponFXComponent>())
+				{
+					WFX->PlayHandling(Data, 0.8f);  // roce de la mano con el equipo
+				}
+			}
+			if (Crossed(In))
+			{
+				SetMagazineInHand(false);
+				FirstPersonRig->AddWeaponKick(FVector(0.f, 0.f, 55.f), FRotator(18.f, 0.f, -7.f));
+				FirstPersonRig->AddCameraKick(FRotator(6.f, 0.f, 2.f));
+			}
+			if (Crossed(In + 0.04f))
+			{
+				FirstPersonRig->AddWeaponKick(FVector(0.f, 0.f, 25.f), FRotator(8.f, 0.f, 0.f));
+			}
+			if (bEmpty && Crossed(In + 0.12f))
+			{
+				FirstPersonRig->AddWeaponKick(FVector(-35.f, -10.f, 6.f), FRotator(6.f, -6.f, 4.f));
+				FirstPersonRig->AddCameraKick(FRotator(4.f, 0.f, -3.f));
 			}
 		}
-		if (Crossed(In))
-		{
-			SetMagazineInHand(false);
-			FirstPersonRig->AddWeaponKick(FVector(0.f, 0.f, 55.f), FRotator(18.f, 0.f, -7.f));
-			FirstPersonRig->AddCameraKick(FRotator(6.f, 0.f, 2.f));
-		}
-		if (Crossed(In + 0.04f))
-		{
-			FirstPersonRig->AddWeaponKick(FVector(0.f, 0.f, 25.f), FRotator(8.f, 0.f, 0.f));
-		}
-		if (bEmpty && Crossed(In + 0.12f))
-		{
-			FirstPersonRig->AddWeaponKick(FVector(-35.f, -10.f, 6.f), FRotator(6.f, -6.f, 4.f));
-			FirstPersonRig->AddCameraKick(FRotator(4.f, 0.f, -3.f));
-		}
 		LastReloadProgress = P;
+	}
+	else if (Data->bLeftHandOnBolt)
+	{
+		// Escopeta: la mano izquierda lleva el guardamanos al bombear y el arma acompaña el tirón
+		const FVector Bolt = GetWeaponBoltOffset();
+		HandAlpha = 1.f;
+		HandTarget = Anim->GetState().LeftGripInWeapon.GetLocation() + Bolt;
+		const float Pump = FMath::Clamp(Bolt.Size() / FMath::Max(Data->BoltTravel, 1.f), 0.f, 1.f);
+		DynLoc.X -= 1.2f * Pump;
+		DynLoc.Z -= 0.6f * Pump;
+		DynRot.Roll += 4.f * Pump;
+		DynRot.Pitch -= 1.5f * Pump;
 	}
 	FirstPersonRig->SetReloadDynamics(DynLoc, DynRot);
 
@@ -724,6 +774,7 @@ void ABLCharacter::Tick(float DeltaTime)
 	LastMoveInput = PendingMoveInput;
 	UpdateCombat(DeltaTime);
 	UpdateInteraction(DeltaTime);
+	TickGrenade(DeltaTime);
 
 	UpdateMantle(DeltaTime);
 	UpdateAim(DeltaTime);
@@ -841,15 +892,6 @@ void ABLCharacter::UpdateCameraRoot()
 		Rot.Pitch = FMath::Lerp(Rot.Pitch, 6.f, A);
 	}
 	CameraRoot->SetRelativeLocationAndRotation(Loc, Rot);
-}
-
-void ABLCharacter::Landed(const FHitResult& Hit)
-{
-	Super::Landed(Hit);
-	FirstPersonRig->NotifyLanded(GetCharacterMovement()->Velocity.Z);
-	const float Impact = FMath::GetMappedRangeValueClamped(FVector2D(200.f, 900.f), FVector2D(0.6f, 1.3f), -GetCharacterMovement()->Velocity.Z);
-	PlayFootstep(FootstepVolume * Impact);
-	PlayGear(0.5f * Impact);
 }
 
 void ABLCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)

@@ -68,6 +68,7 @@ void UBLDebrisPoolComponent::Spawn(const FSpawnParams& Params)
 	P.Rotation = Params.Rotation;
 	P.Velocity = Params.Velocity;
 	P.AngularVelocity = Params.AngularVelocity;
+	P.bShrink = Params.bShrinkAtEnd;
 	P.Lifetime = Params.Lifetime;
 	P.Scale = Params.Scale;
 	P.Gravity = Params.Gravity;
@@ -148,7 +149,7 @@ void UBLDebrisPoolComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			}
 
 			// Encoger al final de la vida
-			const float Fade = FMath::Clamp((P.Lifetime - P.Age) / 0.15f, 0.f, 1.f);
+			const float Fade = P.bShrink ? FMath::Clamp((P.Lifetime - P.Age) / 0.15f, 0.f, 1.f) : 1.f;
 			ScratchTransforms.Add(FTransform(P.Rotation, P.Location, FVector(P.Scale * Fade)));
 		}
 		Pool.ISM->BatchUpdateInstancesTransforms(0, ScratchTransforms, true, true);

@@ -5,6 +5,7 @@
 #include "AI/BLAIController.h"
 #include "AI/BLCoverPoint.h"
 #include "AI/BLEnemyCharacter.h"
+#include "AI/BLVarek.h"
 #include "AI/BLSquadSubsystem.h"
 #include "Combat/BLHealthComponent.h"
 #include "Combat/BLHitReactionComponent.h"
@@ -25,6 +26,10 @@ namespace
 		TArray<ABLEnemyCharacter*> Out;
 		for (TActorIterator<ABLEnemyCharacter> It(World); It; ++It)
 		{
+			if (It->IsA<ABLVarek>())
+			{
+				continue;   // el rehén no es un enemigo
+			}
 			if (Prefix.IsEmpty() || It->GetName().Contains(Prefix)
 				|| It->Tags.ContainsByPredicate([&Prefix](const FName& T) { return T.ToString().StartsWith(TEXT("BLEnemy_") + Prefix); }))
 			{
@@ -82,7 +87,7 @@ void UBLAutoTestComponent::BuildAITest()
 				if (ABLAIController* AI = AIOf(E)) { ++Ctrl; Patrol += AI->GetState() == EBLAIState::Patrol ? 1 : 0; }
 			}
 			D = FString::Printf(TEXT("%d enemigos, %d con controlador, %d en patrulla"), N, Ctrl, Patrol);
-			return N == 12 && Ctrl == 12 && Patrol == 12;
+			return N == 18 && Ctrl == 18 && Patrol == 18;   // 12 de las fases 1-4 + 6 del bloque de viviendas
 		} });
 
 	Steps.Add({ TEXT("Patrulla"), 7.0f,
@@ -281,6 +286,6 @@ void UBLAutoTestComponent::BuildAITest()
 			}
 			const UBLSquadSubsystem* S = GetWorld()->GetSubsystem<UBLSquadSubsystem>();
 			D = FString::Printf(TEXT("%d/%d muertos, %d en ragdoll, quedan %d en la escuadra global"), Dead, N, Ragdoll, S ? S->GetMembers().Num() : -1);
-			return N == 5 && Dead == 5 && Ragdoll == 5 && S && S->GetMembers().Num() == 7;
+			return N == 5 && Dead == 5 && Ragdoll == 5 && S && S->GetMembers().Num() == 13;
 		}, nullptr, 1.5f });
 }

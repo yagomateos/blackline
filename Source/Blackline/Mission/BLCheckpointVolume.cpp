@@ -1,5 +1,6 @@
 #include "Mission/BLCheckpointVolume.h"
 
+#include "Combat/BLDamageTypes.h"
 #include "Mission/BLCheckpointSubsystem.h"
 #include "Player/BLCharacter.h"
 
@@ -12,6 +13,7 @@ ABLCheckpointVolume::ABLCheckpointVolume()
 	Box = CreateDefaultSubobject<UBoxComponent>(TEXT("Box"));
 	Box->SetBoxExtent(FVector(150.f, 150.f, 120.f));
 	Box->SetCollisionProfileName(FName("Trigger"));
+	Box->SetCollisionResponseToChannel(ECC_BLWeapon, ECR_Ignore);   // el perfil Trigger deja el canal del arma en Block
 	RootComponent = Box;
 	RespawnPoint = CreateDefaultSubobject<UArrowComponent>(TEXT("RespawnPoint"));
 	RespawnPoint->SetupAttachment(Box);

@@ -121,22 +121,28 @@ void UBLSquadSubsystem::Tick(float DeltaTime)
 	}
 	if (Engaged.Num() >= 3 && !bHasFlanker)
 	{
-		ABLAIController* Best = nullptr;
+		// Se prueba con cada candidato hasta que uno encuentra flanco; quien no lo encontró espera 15 s
+		// (si no, el primero de la lista sin flanco posible —p. ej. dentro de un edificio— bloqueaba a los demás)
+		const double Now = GetWorld()->GetTimeSeconds();
+		bool bStarted = false;
 		for (ABLAIController* AI : Engaged)
 		{
-			if (!HasAttackToken(AI) && AI->CanStartFlank())
+			const double* Failed = FlankFailTime.Find(AI);
+			if (HasAttackToken(AI) || !AI->CanStartFlank() || (Failed && Now - *Failed < 15.0))
 			{
-				Best = AI;
+				continue;
+			}
+			++FlankAssignments;
+			if (AI->StartFlank())
+			{
+				bStarted = true;
 				break;
 			}
+			FlankFailTime.Add(AI, Now);
 		}
-		if (Best)
+		if (!bStarted)
 		{
-			++FlankAssignments;
-			if (!Best->StartFlank())
-			{
-				FlankTimer = 3.f;   // no había hueco: reintentar pronto (quizá con otro)
-			}
+			FlankTimer = 3.f;   // nadie tenía hueco: reintentar pronto
 		}
 	}
 }

@@ -57,4 +57,5 @@ private:
 	float FlankTimer = 6.f;
 	int32 MaxTokensSeen = 0;
 	int32 FlankAssignments = 0;
+	TMap<TWeakObjectPtr<ABLAIController>, double> FlankFailTime;
 };

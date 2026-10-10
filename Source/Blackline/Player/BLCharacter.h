@@ -18,6 +18,7 @@ class UBLWeaponData;
 class UBLSurfaceEffectsData;
 class USoundBase;
 class UAudioComponent;
+class ABLMountedGun;
 class ABLInteractable;
 struct FInputActionValue;
 
@@ -66,6 +67,10 @@ public:
 	void DoReload();
 	/** Mantener para usar el objeto enfocado (F); con la misión completada, reinicia. */
 	void SetInteractHeld(bool bHeld);
+	/** Cambio de arma (1 = principal, 2 = secundaria; rueda / Y = siguiente). BLCharacterWeapons.cpp */
+	void SwitchWeapon(int32 Index);
+	void CycleWeapon();
+	bool CanSwitchWeapon() const;
 
 	// ---- IBLWeaponOwner ----
 	virtual void GetWeaponAimView(FVector& OutOrigin, FVector& OutDirection) const override;
@@ -80,6 +85,13 @@ public:
 
 	// ---- Estado (lo consulta el rig de cámara, la UI y las pruebas) ----
 	bool IsSprinting() const { return bIsSprinting; }
+
+	// ---- Arma montada (misión 4): BLCharacterMount.cpp ----
+	void MountGun(ABLMountedGun* Gun);
+	void DismountGun();
+	ABLMountedGun* GetMountedGun() const { return MountedGun.Get(); }
+	bool IsMounted() const { return MountedGun.IsValid(); }
+	void MountGunTrigger(bool bHeld);
 	bool IsAiming() const { return bIsAiming; }
 	bool IsMantling() const { return bIsMantling; }
 	float GetLeanAlpha() const { return LeanAlpha; }        // -1 izquierda .. 1 derecha
@@ -97,6 +109,15 @@ public:
 	UBLFirstPersonRigComponent* GetFirstPersonRig() const { return FirstPersonRig; }
 	/** Opciones > Controles. */
 	void SetLookOptions(float Sensitivity, bool bInvertY) { LookSensitivity = Sensitivity; bInvertLookY = bInvertY; }
+	/** Lanzar granada (G / RB): quita la anilla, baja el arma y la lanza a los 0,35 s. */
+	void ThrowGrenade();
+	int32 GetGrenades() const { return Grenades; }
+	int32 GetMaxGrenades() const { return MaxGrenades; }
+	void SetGrenades(int32 N) { Grenades = FMath::Clamp(N, 0, MaxGrenades); }
+	bool IsThrowingGrenade() const { return GrenadeTimer >= 0.f; }
+	class ABLGrenade* GetLastGrenade() const { return LastGrenade.Get(); }
+	/** Una explosión cercana sacude la cámara y el arma (Strength 0..1). */
+	void OnNearbyExplosion(const FVector& Location, float Strength);
 	UBLWeaponComponent* GetWeapon() const { return Weapon; }
 	UBLFirstPersonAnimInstance* GetFirstPersonAnim() const;
 
@@ -108,6 +129,8 @@ public:
 	UBLHealthComponent* GetHealth() const { return Health; }
 	bool IsDead() const { return bDead; }
 	float GetDeathTime() const { return DeathTime; }
+	/** Daño del entorno (caída, agua): no lo reduce la dificultad (DamageTakenMultiplier). bLethal mata siempre. */
+	void ApplyEnvironmentDamage(float Amount, bool bLethal, const FVector& Source);
 	/** Reaparición (la llama UBLCheckpointSubsystem): salud llena, inventario guardado, cámara de pie. */
 	void RespawnAt(const FTransform& Transform, const TArray<FBLWeaponSlot>& Inventory, int32 WeaponIndex);
 
@@ -169,6 +192,18 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Input") TObjectPtr<UInputAction> FireAction;
 	UPROPERTY(EditAnywhere, Category = "Input") TObjectPtr<UInputAction> ReloadAction;
 	UPROPERTY(EditAnywhere, Category = "Input") TObjectPtr<UInputAction> InteractAction;
+	UPROPERTY(EditAnywhere, Category = "Input") TObjectPtr<UInputAction> GrenadeAction;
+	UPROPERTY(EditAnywhere, Category = "Input") TObjectPtr<UInputAction> SwapWeaponAction;
+	UPROPERTY(EditAnywhere, Category = "Input") TObjectPtr<UInputAction> PrimaryWeaponAction;
+	UPROPERTY(EditAnywhere, Category = "Input") TObjectPtr<UInputAction> SecondaryWeaponAction;
+
+	// ---- Granada M-6 (Bloque 11) ----
+	UPROPERTY(EditAnywhere, Category = "Grenade") int32 Grenades = 2;
+	UPROPERTY(EditAnywhere, Category = "Grenade") int32 MaxGrenades = 3;
+	UPROPERTY(EditAnywhere, Category = "Grenade") float GrenadeThrowSpeed = 1450.f;
+	UPROPERTY(EditAnywhere, Category = "Grenade") float GrenadeFuse = 3.5f;
+	UPROPERTY(EditAnywhere, Category = "Grenade") TObjectPtr<USoundBase> GrenadePinSound;
+	UPROPERTY(EditAnywhere, Category = "Grenade") TObjectPtr<USoundBase> GrenadeThrowSound;
 
 	/** Multiplicador de sensibilidad (se expondrá en Opciones). */
 	UPROPERTY(EditAnywhere, Category = "Input", meta = (ClampMin = "0.05"))
@@ -223,6 +258,14 @@ protected:
 	void PlayGear(float Volume);
 
 	// ---- Daño y muerte ----
+	/** Caída: sin daño por debajo de esta velocidad al tocar el suelo (cm/s; 1000 ≈ 5 m) y mortal desde FallLethalSpeed (≈ 15 m). */
+	UPROPERTY(EditAnywhere, Category = "Health") float FallDamageMinSpeed = 1000.f;
+	UPROPERTY(EditAnywhere, Category = "Health") float FallLethalSpeed = 1750.f;
+	/** Cayendo más de esto sin tocar suelo (fuera del mapa, vacío) = muerte. */
+	UPROPERTY(EditAnywhere, Category = "Health") float FallOutOfWorldTime = 3.5f;
+	/** Agua profunda (mallas con M_Env_Water): con la cabeza por debajo de la superficie, muerte (ahogado). */
+	TArray<FBox> WaterBoxes;
+	float FallTime = 0.f;
 	/** Segundos desde la muerte hasta reaparecer en el checkpoint. */
 	UPROPERTY(EditAnywhere, Category = "Health") float RespawnDelay = 4.f;
 	/** Viñeta del post-proceso del nivel (la de daño se suma a esta). */
@@ -249,6 +292,22 @@ private:
 	void UpdateMantle(float DeltaTime);
 	void UpdateCameraRoot();
 	void UpdateProceduralWeaponActions(float DeltaTime);
+	/** Recarga de pistola (BLCharacterWeapons.cpp): rellena la trayectoria de la mano y el movimiento del arma. */
+	void UpdatePistolReload(const class UBLWeaponData* Data, float P, TArray<TPair<float, FVector>, TInlineAllocator<16>>& Keys, FVector& DynLoc, FRotator& DynRot);
+	/** Cargador nuevo en la mano izquierda, colocado como quedará al meterlo en el puño. */
+	void TakeNewMagazine();
+	using FHandKeys = TArray<TPair<float, FVector>, TInlineAllocator<16>>;
+	/** Trayectoria de la mano por puntos clave (Catmull-Rom: continua, sin paradas); Default fuera de los puntos. */
+	static FVector EvalHandPath(const FHandKeys& Keys, float P, const FVector& Default);
+	/** Recarga de escopeta cartucho a cartucho (BLCharacterWeapons.cpp): pose, mano izquierda y movimiento del arma. */
+	void UpdateShellReload(const class UBLWeaponData* Data, float DeltaTime, float& ReloadPose, FVector& HandTarget, FVector& DynLoc, FRotator& DynRot);
+	/** Desplazamiento actual del cerrojo / guardamanos (espacio de la malla del arma). */
+	FVector GetWeaponBoltOffset() const;
+	/** Cartucho en la mano izquierda (malla MagazineMesh del arma) en un punto del espacio del arma. */
+	void SetShellInHand(const class UBLWeaponData* Data, bool bVisible, const FVector& LocationInWeapon = FVector::ZeroVector);
+	/** Posición en la línea de tiempo de la recarga de cartuchos (fase + fracción) del frame anterior. */
+	float LastShellPos = 0.f;
+	FVector ShellHand = FVector::ZeroVector;
 
 	// Interacción
 	void UpdateInteraction(float DeltaTime);
@@ -300,8 +359,9 @@ private:
 	bool bWasSprinting = false;
 	bool bWasAiming = false;
 
-	/** Cargador en la mano izquierda durante la recarga (copia de la malla del cargador). */
+	/** Cargador (o cartucho) en la mano izquierda durante la recarga (copia de la malla del cargador). */
 	UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> HandMagazine;
+	UStaticMeshComponent* EnsureHandMagazine();
 	void SetMagazineInHand(bool bInHand);
 	bool bIsMantling = false;
 	float MantleAlpha = 0.f;
@@ -310,4 +370,13 @@ private:
 	FVector MantleStart = FVector::ZeroVector;
 	FVector MantleMid = FVector::ZeroVector;
 	FVector MantleEnd = FVector::ZeroVector;
+	// Granada
+	void TickGrenade(float DeltaTime);
+	float GrenadeTimer = -1.f;
+	bool bGrenadeReleased = false;
+	TWeakObjectPtr<class ABLGrenade> LastGrenade;
+
+	TWeakObjectPtr<ABLMountedGun> MountedGun;
+	FVector2D SavedViewPitch = FVector2D(-89.9f, 89.9f);
+	FVector2D SavedViewYaw = FVector2D(0.f, 359.999f);
 };

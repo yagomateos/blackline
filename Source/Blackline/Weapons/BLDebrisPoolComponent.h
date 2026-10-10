@@ -38,6 +38,8 @@ public:
 		float Scale = 1.f;
 		float Gravity = 980.f;
 		float Drag = 0.5f;
+		/** Encoger al final de la vida (casquillos); un cargador que se releva a un objeto físico no. */
+		bool bShrinkAtEnd = true;
 		/** Sonido en el primer rebote (casquillo contra el suelo). */
 		USoundBase* BounceSound = nullptr;
 		float BounceVolume = 1.f;
@@ -68,6 +70,7 @@ private:
 		USoundBase* BounceSound = nullptr;
 		float BounceVolume = 1.f;
 		bool bAlive = false;
+		bool bShrink = true;
 	};
 
 	struct FPool

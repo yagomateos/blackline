@@ -1,5 +1,7 @@
 #include "UI/SBLMainMenu.h"
 
+#include "Mission/BLCampaignProgress.h"
+
 #include "UI/BLMenuData.h"
 #include "UI/BLMenuPlayerController.h"
 #include "UI/BLMenuStyle.h"
@@ -115,7 +117,11 @@ void SBLMainMenu::Construct(const FArguments& InArgs)
 				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 10.f)
 				[
 					SNew(STextBlock).Font(BLMenu::Mono(13)).ColorAndOpacity(FSlateColor(BLMenu::Text))
-					.Text_Lambda([this]() { return FText::FromString(FString::Printf(TEXT("01 · AMANECER ROTO  //  %s"), BLMenuData::StartPhases[StartPhase])); })
+					.Text_Lambda([this]()
+					{
+						const BLMenuData::FMission& Sel = BLMenuData::Missions[SelectedMission];
+						return FText::FromString(FString::Printf(TEXT("%s · %s  //  %s"), Sel.Code, Sel.Name, BLMenuData::StartPhases[Sel.FirstPhase + StartPhase]));
+					})
 				]
 			]
 		]
@@ -137,8 +143,13 @@ TSharedRef<SWidget> SBLMainMenu::MainPage()
 {
 	FSlateFontInfo Logo = BLMenu::Sans(52, true);
 	Logo.LetterSpacing = 150;
-	TSharedRef<SWidget> Play = SNew(SBLMenuButton).Text(LOCTEXT("Play", "JUGAR")).Hint(LOCTEXT("PlayHint", "MISIÓN 01 · AMANECER ROTO"))
-		.OnClicked_Lambda([this]() { StartPhase = 0; if (Owner.IsValid()) { Owner->StartMission(0); } });
+	// Con progreso guardado, el primer botón continúa la campaña por la primera misión sin completar
+	const bool bContinue = BLCampaign::HasProgress() && !BLCampaign::IsCampaignComplete();
+	const int32 PlayMission = bContinue ? BLCampaign::NextMissionToPlay() : 0;
+	const FText PlayHint = T(*FString::Printf(TEXT("%sMISIÓN %s · %s"), BLCampaign::IsCampaignComplete() ? TEXT("CAMPAÑA COMPLETADA · ") : TEXT(""),
+		BLMenuData::Missions[PlayMission].Code, BLMenuData::Missions[PlayMission].Name));
+	TSharedRef<SWidget> Play = SNew(SBLMenuButton).Text(bContinue ? LOCTEXT("Continue", "CONTINUAR") : LOCTEXT("Play", "JUGAR")).Hint(PlayHint)
+		.OnClicked_Lambda([this, PlayMission]() { SelectedMission = PlayMission; StartPhase = 0; if (Owner.IsValid()) { Owner->StartMission(PlayMission, 0); } });
 	FirstFocus.Add(int32(EPage::Main), Play);
 	auto Btn = [this](const FText& Text, const FText& Hint, EPage To)
 	{
@@ -175,9 +186,10 @@ TSharedRef<SWidget> SBLMainMenu::MissionsPage()
 		const BLMenuData::FMission& M = BLMenuData::Missions[i];
 		TSharedRef<SBLMenuButton> B = SNew(SBLMenuButton).FontSize(18).bLocked(!M.bAvailable)
 			.Text(T(*FString::Printf(TEXT("%s  %s"), M.Code, M.Name)))
-			.Hint(M.bAvailable ? T(M.Place) : LOCTEXT("Locked", "NO DISPONIBLE EN EL VERTICAL SLICE"))
-			.OnHighlighted_Lambda([this, i]() { SelectedMission = i; })
-			.OnClicked_Lambda([this, i]() { SelectedMission = i; if (Owner.IsValid()) { Owner->StartMission(StartPhase); } });
+			.Hint(M.bAvailable ? T(*FString::Printf(TEXT("%s%s"), BLCampaign::IsCompleted(i) ? TEXT("COMPLETADA · ") : TEXT(""), M.Place))
+				: LOCTEXT("Locked", "NO DISPONIBLE EN EL VERTICAL SLICE"))
+			.OnHighlighted_Lambda([this, i]() { if (SelectedMission != i) { SelectedMission = i; StartPhase = 0; } })
+			.OnClicked_Lambda([this, i]() { SelectedMission = i; if (Owner.IsValid()) { Owner->StartMission(i, StartPhase); } });
 		if (i == 0)
 		{
 			FirstFocus.Add(int32(EPage::Missions), B);
@@ -187,13 +199,21 @@ TSharedRef<SWidget> SBLMainMenu::MissionsPage()
 	List->AddSlot().AutoHeight().Padding(0.f, 22.f, 0.f, 0.f)
 	[
 		SNew(SBLSelectorRow).Label(LOCTEXT("Start", "PUNTO DE INICIO"))
-		.Value_Lambda([this]() { return T(BLMenuData::StartPhases[StartPhase]); })
-		.OnStep_Lambda([this](int32 Dir) { StartPhase = (StartPhase + Dir + 5) % 5; })
+		.Value_Lambda([this]()
+		{
+			const BLMenuData::FMission& Sel = BLMenuData::Missions[SelectedMission];
+			return Sel.NumPhases > 0 ? T(BLMenuData::StartPhases[Sel.FirstPhase + StartPhase]) : LOCTEXT("NoStart", "—");
+		})
+		.OnStep_Lambda([this](int32 Dir)
+		{
+			const int32 N = FMath::Max(BLMenuData::Missions[SelectedMission].NumPhases, 1);
+			StartPhase = (StartPhase + Dir + N) % N;
+		})
 	];
 	List->AddSlot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
 	[
-		SNew(SBLMenuButton).Text(LOCTEXT("Deploy", "DESPLEGAR")).Hint(LOCTEXT("DeployHint", "MISIÓN 01"))
-		.OnClicked_Lambda([this]() { if (Owner.IsValid()) { Owner->StartMission(StartPhase); } })
+		SNew(SBLMenuButton).Text(LOCTEXT("Deploy", "DESPLEGAR")).Hint_Lambda([this]() { return T(*FString::Printf(TEXT("MISIÓN %s"), BLMenuData::Missions[SelectedMission].Code)); })
+		.OnClicked_Lambda([this]() { if (Owner.IsValid()) { Owner->StartMission(SelectedMission, StartPhase); } })
 	];
 	List->AddSlot().AutoHeight()[SNew(SBLMenuButton).Text(LOCTEXT("Back", "VOLVER")).FontSize(16).OnClicked_Lambda([this]() { Back(); })];
 
@@ -370,7 +390,7 @@ void SBLMainMenu::Back()
 FReply SBLMainMenu::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
 {
 	const FKey K = InKeyEvent.GetKey();
-	if (K == EKeys::Escape || K == EKeys::BackSpace || K == EKeys::Gamepad_FaceButton_Right || K == EKeys::Virtual_Back)
+	if (K == EKeys::Escape || K == EKeys::BackSpace || K == EKeys::Gamepad_FaceButton_Right || K == EKeys::Virtual_Gamepad_Back.GetVirtualKey())
 	{
 		Back();
 		return FReply::Handled();

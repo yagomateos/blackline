@@ -12,8 +12,27 @@ M01_Control	radio	TORRE	Pablo	-14%	1.0	Hay un control en la carretera, al sur de
 M01_ControlOk	radio	TORRE	Pablo	-14%	1.0	Control despejado. El refugio de Varek está al este, al final de la calle principal.
 M01_Avanzamos	radio	SABLE 2-1	Pablo	-3%	1.05	Entendido. Avanzamos.
 M01_Local	radio	TORRE	Pablo	-14%	1.0	Es ese local. Varek guardaba el disco junto a su portátil. Buscadlo.
-M01_Disco	radio	SABLE 2-1	Pablo	-3%	1.05	Tengo el disco. Ni rastro de Varek.
-M01_Debrief	radio	TORRE	Pablo	-14%	1.0	Recibido, Sable. Id al punto de extracción en el muelle. Buen trabajo.
+M01_Disco	radio	SABLE 2-1	Pablo	-3%	1.05	Tengo el disco. Varek no está, pero hay sangre en la silla.
+M01_VarekBloque	radio	TORRE	Pablo	-14%	1.0	Lo han visto entrar en el bloque de viviendas de enfrente. Última planta. Sácalo de ahí, Sable.
+M01_Bloque	radio	TORRE	Pablo	-14%	1.0	Tres plantas, la escalera está al fondo del portal. Despeja piso a piso.
+M01_VarekHabla	persona	VAREK	Pablo	+12%	1.1	Sabía que vendríais... Tienen más gente en camino.
+M01_VarekOk	radio	SABLE 2-1	Pablo	-3%	1.05	Torre, tengo a Varek. Está herido, pero puede andar.
+M01_Contra	radio	TORRE	Pablo	-14%	1.0	Sable, dos camiones de la Columna entrando por la calle principal. Aguantad en el bloque con Varek: el apoyo está en camino.
+M01_ContraHumo	radio	SABLE 2-1	Pablo	-3%	1.1	¡Humo en la calle! Ya vienen.
+M01_ContraPasaje	radio	TORRE	Pablo	-14%	1.0	Segundo grupo por el pasaje trasero, al sur del bloque.
+M01_ContraUltima	radio	TORRE	Pablo	-14%	1.0	Último empujón: calle y callejón a la vez. Aguantad.
+M01_ContraOk	radio	TORRE	Pablo	-14%	1.0	Se retiran. Atención, Sable: blindado acercándose por el oeste.
+M01_Blindado	radio	TORRE	Pablo	-14%	1.0	Blindado entrando en la calle principal. Por el portal no salís: subid a la azotea, os sacamos por los tejados.
+M01_Derrumbe	persona	VAREK	Pablo	+12%	1.15	¡La escalera se ha venido abajo! ¡Arriba, arriba!
+M01_Azotea	radio	TORRE	Pablo	-14%	1.0	Os veo en la azotea. Al este hay un andamio hasta el tejado de al lado; la escalera de incendios baja al muelle.
+M01_Tejados	radio	SABLE 2-1	Pablo	-3%	1.1	Recibido. Varek, pegado a mí y agachado.
+M01_Muelle	radio	TORRE	Pablo	-14%	1.0	Halcón 1 viene por el mar. Zona de aterrizaje junto a la grúa: marcadla con humo.
+M01_LZ	radio	HALCÓN 1	Laura	+0%	1.05	Halcón 1 a Sable, veo vuestro humo. Un minuto. Mantened la zona limpia.
+M01_LZNorte	radio	TORRE	Pablo	-14%	1.0	Milicianos saltando la valla del norte.
+M01_LZOeste	radio	SABLE 2-1	Pablo	-3%	1.1	¡Contacto por el callejón del oeste!
+M01_HeliLlega	radio	HALCÓN 1	Laura	+0%	1.05	Zona limpia. Bajo a recogeros.
+M01_Halcon	radio	HALCÓN 1	Laura	+0%	1.05	En tierra. ¡Subid, subid!
+M01_Debrief	radio	TORRE	Pablo	-14%	1.0	Halcón 1 con el paquete a bordo. Varek y el disco, a salvo. Buen trabajo, Sable. Torre, fuera.
 Suspicious_1	bark	Suspicious				¿Hay alguien ahí?
 Suspicious_2	bark	Suspicious				¿Qué ha sido eso?
 HeardShots_1	bark	HeardShots				¡Disparos! ¡Por allí!
@@ -36,3 +55,75 @@ Lost_1	bark	Lost				Lo hemos perdido. Atentos.
 Lost_2	bark	Lost				¿Dónde se ha metido?
 ManDown_1	bark	ManDown				¡Hombre abajo!
 ManDown_2	bark	ManDown				¡Han caído! ¡Cuidado!
+Grenade_1	bark	Grenade				¡Granada!
+Grenade_2	bark	Grenade				¡Granada, cuerpo a tierra!
+M02_Brief_01	radio	TORRE	Pablo	-14%	1.0	Sable, Torre. Estás en el canal de refrigeración. El almacén 7 está al fondo del patio de carga, pasado el parque de tanques.
+M02_Brief_02	radio	VAREK	Pablo	+12%	1.1	Contenedores KSR 4471, 4472 y el 0918. El 0918 es el que pesaba demasiado.
+M02_Brief_03	radio	TORRE	Pablo	-14%	1.0	Fotos y fuera. Nadie puede saber que has estado ahí. De noche, las linternas te delatan a ellos antes que a ti.
+M02_Tanques	radio	TORRE	Pablo	-14%	1.0	Patrullas con linterna entre los depósitos. Pégate a la sombra y no cruces bajo las farolas.
+M02_Carga	radio	SABLE 2-1	Pablo	-3%	1.05	Torre, patio de carga a la vista. Tres junto al brasero.
+M02_Almacen	radio	TORRE	Pablo	-14%	1.0	Estás dentro. Busca los números en las puertas de los contenedores.
+M02_Foto1	radio	SABLE 2-1	Pablo	-3%	1.05	Cuatro cuatro siete uno. Cajas sin marcas.
+M02_Foto2	radio	SABLE 2-1	Pablo	-3%	1.05	Cuatro cuatro siete dos. Lo mismo.
+M02_Foto3	radio	SABLE 2-1	Pablo	-3%	1.05	Cero nueve uno ocho... Torre, mira esto.
+M02_Revelacion	radio	TORRE	Pablo	-14%	1.0	Eso no es munición, Sable. Es un banco de pruebas: lote de evaluación de Corvane.
+M02_Alarma	radio	TORRE	Pablo	-14%	1.0	Han encontrado la valla. Sal por detrás, la lancha vuelve a por ti.
+M02_Detectado	radio	TORRE	Pablo	-14%	1.0	Te han visto, Sable. Toda la refinería sabe que estás ahí.
+M02_Ametralladora	radio	SABLE 2-1	Pablo	-3%	1.05	¡Ametralladora en la pasarela!
+M02_Refuerzos	radio	TORRE	Pablo	-14%	1.0	Más por la puerta principal. No te quedes quieto.
+M02_Dron	radio	SABLE 2-1	Pablo	-3%	1.05	Torre, dron en el aire. No es de la Columna.
+M02_DronTorre	radio	TORRE	Pablo	-14%	1.0	Entonces ya sabemos de quién es. Que no te marque.
+M02_Gas	radio	SABLE 2-1	Pablo	-3%	1.05	¡Han reventado la tubería de gas! Voy por la zanja.
+M02_Canal	radio	TORRE	Pablo	-14%	1.0	La lancha entra en el canal. Aguanta en el embarcadero.
+M02_Lancha	radio	LANCHA	Laura	+0%	1.05	Sable, sube. Nos vamos.
+M02_Debrief	radio	TORRE	Pablo	-14%	1.0	Fotos recibidas. Esta vez no van a poder decir que no estaban. Torre, fuera.
+M03_Brief_01	radio	TORRE	Pablo	-14%	1.0	Sable, Torre. El práctico del puerto viejo vive en las casas de la ribera. Su cuaderno dice cuándo entra y sale el barco.
+M03_Brief_02	radio	VAREK	Pablo	+12%	1.1	Casco gris, sin nombre, sin bandera. Siempre en el muelle exterior, siempre con niebla.
+M03_Brief_03	radio	TORRE	Pablo	-14%	1.0	Cuaderno, y una baliza en el casco antes de que zarpe. Cruza el puente viejo mientras dure la niebla.
+M03_Puente	radio	SABLE 2-1	Pablo	-3%	1.05	Dos en el otro extremo del puente.
+M03_Calles	radio	TORRE	Pablo	-14%	1.0	Control de la Columna en la plaza pequeña. Las casas del práctico están detrás, junto al agua.
+M03_Casas	radio	TORRE	Pablo	-14%	1.0	Tres casas. El práctico vive en la última, la de la puerta verde.
+M03_Atrancada	radio	SABLE 2-1	Pablo	-3%	1.05	Puerta atrancada. Coloco carga.
+M03_Cuaderno	radio	SABLE 2-1	Pablo	-3%	1.05	Tengo el cuaderno. Entradas de noche, cada nueve días. Hoy toca.
+M03_CuadernoTorre	radio	TORRE	Pablo	-14%	1.0	Entonces está amarrado ahora mismo. Al muelle, Sable.
+M03_Tirador	radio	SABLE 2-1	Pablo	-3%	1.05	¡Tirador en el campanario! Láser rojo.
+M03_TiradorTorre	radio	TORRE	Pablo	-14%	1.0	Eso no es un miliciano. Muévete de cobertura en cobertura o rodéale por los tejados de la lonja.
+M03_TiradorOk	radio	SABLE 2-1	Pablo	-3%	1.05	Campanario limpio.
+M03_Muelle	radio	SABLE 2-1	Pablo	-3%	1.05	Torre, veo el barco. Amarrado en el muelle exterior.
+M03_MuelleTorre	radio	TORRE	Pablo	-14%	1.0	Baliza en el casco, junto a la amarra de proa.
+M03_Operadores	radio	TORRE	Pablo	-14%	1.0	Esos son de Corvane, Sable. Ya no se esconden. Cuidado con sus granadas.
+M03_Baliza	radio	SABLE 2-1	Pablo	-3%	1.05	Baliza colocada.
+M03_Zarpa	radio	TORRE	Pablo	-14%	1.0	Se mueve. Y la señal es buena: lo tenemos. Sal de ahí, vienen más por la lonja.
+M03_Furgon	radio	TORRE	Pablo	-14%	1.0	El furgón te espera detrás de los almacenes.
+M03_Debrief	radio	TORRE	Pablo	-14%	1.0	Buen trabajo, Sable. Ahora sabemos adónde va. Torre, fuera.
+M04_Brief_01	radio	TORRE	Pablo	-14%	1.0	Sable, Torre. El enlace por satélite está en el puesto del puente del ferrocarril. Mientras sube la transmisión, ese puente no puede caer.
+M04_Brief_02	radio	TTE. ILIĆ	Pablo	-7%	1.08	Aquí el teniente Ilić. Tengo seis hombres y una ametralladora. Si es usted el asesor, venga a asesorarnos desde la trinchera.
+M04_Mortero	radio	SABLE 2-1	Pablo	-3%	1.05	¡Morteros! Voy por la trinchera.
+M04_Defensa	radio	TTE. ILIĆ	Pablo	-7%	1.08	¡Cruzan el puente! ¡Fuego a discreción!
+M04_Transmision	radio	TORRE	Pablo	-14%	1.0	La transmisión ha empezado. Va lenta. Aguantad.
+M04_Ametralladora	radio	TTE. ILIĆ	Pablo	-7%	1.08	¡Han dado al de la ametralladora! ¡Sable, cójala usted!
+M04_Carga	radio	TTE. ILIĆ	Pablo	-7%	1.08	¡Ahí viene el grueso! ¡No les deje poner un pie en este lado!
+M04_Blindado	radio	SABLE 2-1	Pablo	-3%	1.05	¡Blindado en el puente! Torre, necesito aviación.
+M04_BlindadoTorre	radio	TORRE	Pablo	-14%	1.0	Hay dos cazas en la zona. Márcalo con el designador del observador.
+M04_Marcado	radio	TORRE	Pablo	-14%	1.0	Objetivo marcado. Cazas en camino. Cabeza abajo.
+M04_Cargas	radio	TTE. ILIĆ	Pablo	-7%	1.08	No vamos a aguantar otra así. Hay cargas en el búnker: vuele el primer tramo.
+M04_Detonador	radio	SABLE 2-1	Pablo	-3%	1.05	Cargas puestas. Volvemos al búnker.
+M04_Voladura	radio	TTE. ILIĆ	Pablo	-7%	1.08	¡Fuego en el puente!
+M04_Vado	radio	TTE. ILIĆ	Pablo	-7%	1.08	¡Han cruzado por el vado del sur! ¡Flanco izquierdo!
+M04_Final	radio	TORRE	Pablo	-14%	1.0	Transmisión completa. Las pruebas han salido del país. Retiraos a los camiones.
+M04_Debrief	radio	TTE. ILIĆ	Pablo	-7%	1.08	Gracias, asesor. Hoy han asesorado bien.
+M05_Brief_01	radio	TORRE	Pablo	-14%	1.0	Sable, Torre. Luz verde de la coalición. Corvane está recogiendo en la capitanía y quemando lo que no se lleva.
+M05_Brief_02	radio	TORRE	Pablo	-14%	1.0	Quiero los registros y quiero a "el inglés". Vivo. Sable 2-2 y 2-3 van contigo.
+M05_Equipo	radio	SABLE 2-2	Pablo	+6%	1.1	Dos-dos en posición. Detrás de ti, jefe.
+M05_Terminal	radio	SABLE 2-1	Pablo	-3%	1.05	Operadores entre las grúas. Despejamos la entrada.
+M05_Servidores	radio	TORRE	Pablo	-14%	1.0	Están prendiendo termita en la sala de servidores. Tienes dos minutos.
+M05_Termita	radio	SABLE 2-1	Pablo	-3%	1.05	Dos cargas de termita en los armarios. Las desactivo.
+M05_Descarga	radio	TORRE	Pablo	-14%	1.0	Conecta el equipo. La descarga es lenta: que no te saquen de esa sala.
+M05_DescargaOk	radio	TORRE	Pablo	-14%	1.0	Registros descargados. Todo: pagos, envíos, nombres.
+M05_Huye	radio	SABLE 2-2	Pablo	+6%	1.1	¡El inglés sube a la azotea! ¡Hay un helicóptero llegando!
+M05_Helicoptero	radio	TORRE	Pablo	-14%	1.0	Ese helicóptero no despega, Sable. Y a él lo quiero vivo.
+M05_Rendicion	radio	EL INGLÉS	Pablo	-18%	0.95	Está bien. Está bien. No dispare.
+M05_Detenido	radio	SABLE 2-1	Pablo	-3%	1.05	Torre, el paquete está asegurado.
+M05_Extraccion	radio	TORRE	Pablo	-14%	1.0	Halcón 1 va hacia la azotea. Buen trabajo a todos.
+M05_Debrief	radio	TORRE	Pablo	-14%	1.0	Se acabó, Sable. Mañana la línea negra seguirá ahí, pero ya no podrán decir que no sabían quién pagaba. Torre, fuera.
+M05_Fallo_Termita	radio	TORRE	Pablo	-14%	1.0	Han quemado los servidores. Lo hemos perdido todo.

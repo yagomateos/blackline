@@ -25,7 +25,7 @@ rm -f "$ROOT/Saved/BLTest/${TEST}_"*.png "$ROOT/Saved/BLTest/${TEST}_results.txt
 EXTRA=()
 if [[ -n "$BL_EXEC" ]]; then EXTRA=(-ExecCmds="$BL_EXEC"); fi
 echo "== Ejecutando prueba $TEST en $MAP"
-MSYS_NO_PATHCONV=1 timeout 300 "$UE/Binaries/Win64/UnrealEditor.exe" "$WINROOT/Blackline.uproject" "$MAP" \
+MSYS_NO_PATHCONV=1 timeout "${BL_TIMEOUT:-300}" "$UE/Binaries/Win64/UnrealEditor.exe" "$WINROOT/Blackline.uproject" "$MAP" \
   -game -windowed -ResX="${BL_RESX:-1280}" -ResY="${BL_RESY:-720}" -nosplash -NoSound -unattended -BLTest="$TEST" \
   -abslog="$WINROOT/Saved/BLTest/${TEST}_game.log" "${EXTRA[@]}" $BL_ARGS || true
 

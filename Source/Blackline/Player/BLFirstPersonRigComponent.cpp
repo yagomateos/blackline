@@ -225,17 +225,17 @@ void UBLFirstPersonRigComponent::UpdateRig(float DeltaTime)
 	UpdateAimCalibration(DeltaTime);
 
 	// Desplazamientos en espacio de cámara respecto a la pose ADS calibrada
-	FVector WLoc = FMath::Lerp(HipLocation, FVector::ZeroVector, Aim);
-	FRotator WRot = FMath::Lerp(HipRotation, FRotator::ZeroRotator, Aim);
+	FVector WLoc = FMath::Lerp(Poses.HipLocation, FVector::ZeroVector, Aim);
+	FRotator WRot = FMath::Lerp(Poses.HipRotation, FRotator::ZeroRotator, Aim);
 
-	WLoc = FMath::Lerp(WLoc, SprintLocation, Sprint);
-	WRot = FMath::Lerp(WRot, SprintRotation, Sprint);
-	WLoc = FMath::Lerp(WLoc, MantleLocation, Mantle);
-	WRot = FMath::Lerp(WRot, MantleRotation, Mantle);
-	WLoc = FMath::Lerp(WLoc, EquipLocation, EquipAlpha);
-	WRot = FMath::Lerp(WRot, EquipRotation, EquipAlpha);
+	WLoc = FMath::Lerp(WLoc, Poses.SprintLocation, Sprint);
+	WRot = FMath::Lerp(WRot, Poses.SprintRotation, Sprint);
+	WLoc = FMath::Lerp(WLoc, Poses.MantleLocation, Mantle);
+	WRot = FMath::Lerp(WRot, Poses.MantleRotation, Mantle);
+	WLoc = FMath::Lerp(WLoc, Poses.EquipLocation, EquipAlpha);
+	WRot = FMath::Lerp(WRot, Poses.EquipRotation, EquipAlpha);
 	// Las poses se ajustaron con la mira a PoseReferenceAimDistance: fuera de ADS no dependen de la distancia de cada arma
-	WLoc.X += (PoseReferenceAimDistance - AimDistance) * (1.f - Aim);
+	WLoc.X += (Poses.PoseReferenceAimDistance - AimDistance) * (1.f - Aim);
 	// Transición de ADS: el arma gira y baja un poco a mitad de camino (se "lleva" a la cara)
 	const float AimBell = FMath::Sin(PI * Aim);
 	WRot.Roll += AimBell * AimTransitionRoll;
@@ -254,7 +254,7 @@ void UBLFirstPersonRigComponent::UpdateRig(float DeltaTime)
 	if (ReloadAlpha > 0.f)
 	{
 		const FQuat Axes = FRotationMatrix::MakeFromXZ(WeaponForwardAxis, FVector::UpVector).ToQuat();
-		const FTransform ReloadPose = FTransform(Axes).Inverse() * FTransform(ReloadRotation.Quaternion(), ReloadGripLocation);
+		const FTransform ReloadPose = FTransform(Axes).Inverse() * FTransform(Poses.ReloadRotation.Quaternion(), Poses.ReloadGripLocation);
 		FTransform Blended;
 		Blended.Blend(Pose, ReloadPose, ReloadAlpha);
 		Pose = Blended;

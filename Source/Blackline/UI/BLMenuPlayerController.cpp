@@ -83,15 +83,21 @@ void ABLMenuPlayerController::EndPlay(const EEndPlayReason::Type Reason)
 	Super::EndPlay(Reason);
 }
 
-void ABLMenuPlayerController::StartMission(int32 StartPhase)
+void ABLMenuPlayerController::StartMission(int32 Mission, int32 StartPhase)
 {
 	if (IsLoading())
 	{
 		return;
 	}
-	StartPhase = FMath::Clamp(StartPhase, 0, 4);
+	const BLMenuData::FMission& M = BLMenuData::Missions[FMath::Clamp(Mission, 0, int32(UE_ARRAY_COUNT(BLMenuData::Missions)) - 1)];
+	if (!M.bAvailable || !M.Map)
+	{
+		return;
+	}
+	StartPhase = FMath::Clamp(StartPhase, 0, FMath::Max(M.NumPhases - 1, 0));
+	PendingMap = M.Map;
 	// En la partida, la fase llega como opción de la URL (?BLStart=Fase3) y la lee ABLGameMode / ABLMissionDirector
-	PendingLevelOptions = FString::Printf(TEXT("BLStart=%s"), BLMenuData::StartPhaseIds[StartPhase]);
+	PendingLevelOptions = FString::Printf(TEXT("BLStart=%s"), BLMenuData::StartPhaseIds[M.FirstPhase + StartPhase]);
 	if (TestIndex != INDEX_NONE)
 	{
 		PendingLevelOptions += TEXT("?BLMenuTest=1");
@@ -123,7 +129,7 @@ void ABLMenuPlayerController::Tick(float DeltaTime)
 		if (LoadTimer < 0.f)
 		{
 			LoadTimer = 0.f;   // sigue "cargando" hasta que cambie el nivel
-			UGameplayStatics::OpenLevel(this, FName(TEXT("/Game/Maps/M01/L_M01_AmanecerRoto")), true, PendingLevelOptions);
+			UGameplayStatics::OpenLevel(this, FName(*PendingMap), true, PendingLevelOptions);
 		}
 	}
 
@@ -158,7 +164,7 @@ void ABLMenuPlayerController::Tick(float DeltaTime)
 			// El último paso (despliegue) lo verifica ABLGameMode en el nivel de la misión y añade su línea al fichero
 			TestResults.Add(FString::Printf(TEXT("RESUMEN Menu (parcial): %d PASS, %d FAIL"), TestPassed, TestFailed));
 			FFileHelper::SaveStringArrayToFile(TestResults, *(FPaths::ProjectSavedDir() / TEXT("BLTest/Menu_results.txt")), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-			StartMission(1);
+			StartMission(0, 1);
 		}
 	}
 }
@@ -188,21 +194,26 @@ void ABLMenuPlayerController::BuildTest()
 		UBLUserSettings* S = UBLUserSettings::Get();
 		S->MouseSensitivity = 1.7f;
 		S->MusicVolume = 0.55f;
+		S->Difficulty = 2;
 	}, [PageIs](FString& D) { return PageIs(SBLMainMenu::EPage::Options, D, TEXT("opciones")); } });
 	// Al volver se guardan las opciones: se comprueba leyendo el .ini y se restauran los valores
 	TestSteps.Add({ TEXT("Guardado"), 1.0f, [this]() { Menu->ShowPage(SBLMainMenu::EPage::Main); }, [](FString& D)
 	{
 		float Sens = 0.f, Music = 0.f;
+		int32 Difficulty = -1;
 		GConfig->Flush(true, GGameUserSettingsIni);
 		GConfig->LoadFile(GGameUserSettingsIni);
 		const bool bSens = GConfig->GetFloat(TEXT("/Script/Blackline.BLUserSettings"), TEXT("MouseSensitivity"), Sens, GGameUserSettingsIni);
 		GConfig->GetFloat(TEXT("/Script/Blackline.BLUserSettings"), TEXT("MusicVolume"), Music, GGameUserSettingsIni);
-		D = FString::Printf(TEXT("guardado en GameUserSettings.ini: sensibilidad %.1f, música %.2f"), Sens, Music);
+		GConfig->GetInt(TEXT("/Script/Blackline.BLUserSettings"), TEXT("Difficulty"), Difficulty, GGameUserSettingsIni);
+		D = FString::Printf(TEXT("guardado en GameUserSettings.ini: sensibilidad %.1f, música %.2f, dificultad %d (%s, daño %.0f %%)"), Sens, Music, Difficulty,
+			UBLUserSettings::DifficultyName(Difficulty), 100.f * UBLUserSettings::PlayerDamageTaken(Difficulty));
 		UBLUserSettings* S = UBLUserSettings::Get();
 		S->MouseSensitivity = 1.f;
 		S->MusicVolume = 0.8f;
+		S->Difficulty = 1;
 		S->Save();
-		return bSens && FMath::IsNearlyEqual(Sens, 1.7f, 0.01f) && FMath::IsNearlyEqual(Music, 0.55f, 0.01f);
+		return bSens && FMath::IsNearlyEqual(Sens, 1.7f, 0.01f) && FMath::IsNearlyEqual(Music, 0.55f, 0.01f) && Difficulty == 2;
 	} });
 	TestSteps.Add({ TEXT("Salir"), 1.0f, [this]() { Menu->ShowPage(SBLMainMenu::EPage::Quit); },
 		[PageIs](FString& D) { return PageIs(SBLMainMenu::EPage::Quit, D, TEXT("confirmar salida")); } });

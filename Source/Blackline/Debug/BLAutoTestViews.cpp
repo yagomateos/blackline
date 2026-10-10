@@ -4,6 +4,7 @@
 
 #include "Blackline.h"
 #include "AI/BLEnemyCharacter.h"
+#include "AI/BLVarek.h"
 #include "Combat/BLHealthComponent.h"
 #include "Player/BLCharacter.h"
 
@@ -26,7 +27,10 @@ void UBLAutoTestComponent::BuildViewsTest()
 			It->SetActorLocationAndRotation(FVector(9700.f, -2900.f, 96.f), FRotator(0.f, 200.f, 0.f));
 			continue;
 		}
-		It->Destroy();
+		if (!It->IsA<ABLVarek>())
+		{
+			It->Destroy();
+		}
 	}
 	struct FView { const TCHAR* Name; FVector Loc; float Yaw; float Pitch; };
 	const FView Views[] = {
@@ -39,6 +43,16 @@ void UBLAutoTestComponent::BuildViewsTest()
 		{ TEXT("Local"), FVector(19700.f, 600.f, 0.f), 0.f, -8.f },            // interior del objetivo
 		{ TEXT("Miliciano"), FVector(9470.f, -2985.f, 0.f), 20.f, -6.f },      // retrato de un enemigo a 2,5 m
 		{ TEXT("Fuego"), FVector(14250.f, 650.f, 0.f), 25.f, -4.f },           // coche ardiendo
+		{ TEXT("BloqueFachada"), FVector(18000.f, 300.f, 0.f), 60.f, 12.f },   // bloque de viviendas desde la calle
+		{ TEXT("BloquePortal"), FVector(18410.f, 1450.f, 0.f), 30.f, 0.f },    // portal por dentro
+		{ TEXT("BloqueEscalera"), FVector(19080.f, 2030.f, 0.f), -90.f, 18.f },// escalera
+		{ TEXT("BloquePasillo"), FVector(19000.f, 2025.f, 320.f), 180.f, -2.f },// pasillo de la 1.ª planta
+		{ TEXT("Varek"), FVector(17500.f, 2550.f, 640.f), 190.f, -12.f },      // Varek retenido
+		{ TEXT("Azotea"), FVector(17200.f, 2700.f, 960.f), 20.f, 0.f },        // azotea
+		{ TEXT("Tejados"), FVector(19560.f, 2450.f, 960.f), 0.f, -8.f },       // pasarela hacia C4 (fase 8)
+		{ TEXT("Incendios"), FVector(21300.f, 2370.f, 960.f), -100.f, -35.f },  // escalera de incendios desde arriba
+		{ TEXT("Muelle"), FVector(22300.f, 1500.f, 0.f), 10.f, 4.f },          // muelle: grúa, agua, zona de aterrizaje
+		{ TEXT("MuelleAgua"), FVector(26300.f, 0.f, 0.f), 60.f, -2.f },        // el agua hacia el amanecer
 	};
 	for (const FView& V : Views)
 	{

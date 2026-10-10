@@ -57,6 +57,18 @@ void UBLAutoTestComponent::StartTest(const FString& TestName)
 	{
 		BuildWeaponsTest();
 	}
+	else if (TestName.Equals(TEXT("PistolHands"), ESearchCase::IgnoreCase))
+	{
+		BuildPistolHandsTest();
+	}
+	else if (TestName.Equals(TEXT("Pistol"), ESearchCase::IgnoreCase))
+	{
+		BuildPistolTest();
+	}
+	else if (TestName.Equals(TEXT("Shotgun"), ESearchCase::IgnoreCase))
+	{
+		BuildShotgunTest();
+	}
 	else if (TestName.Equals(TEXT("Combat"), ESearchCase::IgnoreCase))
 	{
 		BuildCombatTest();
@@ -80,6 +92,38 @@ void UBLAutoTestComponent::StartTest(const FString& TestName)
 	else if (TestName.Equals(TEXT("Views"), ESearchCase::IgnoreCase))
 	{
 		BuildViewsTest();
+	}
+	else if (TestName.Equals(TEXT("Grenade"), ESearchCase::IgnoreCase))
+	{
+		BuildGrenadeTest();
+	}
+	else if (TestName.Equals(TEXT("Mission5"), ESearchCase::IgnoreCase))
+	{
+		BuildMission5Test();
+	}
+	else if (TestName.Equals(TEXT("Mission5Fallo"), ESearchCase::IgnoreCase))
+	{
+		BuildMission5FailTest();
+	}
+	else if (TestName.Equals(TEXT("Mission4"), ESearchCase::IgnoreCase))
+	{
+		BuildMission4Test();
+	}
+	else if (TestName.Equals(TEXT("Mission3"), ESearchCase::IgnoreCase))
+	{
+		BuildMission3Test();
+	}
+	else if (TestName.Equals(TEXT("Mission2"), ESearchCase::IgnoreCase))
+	{
+		BuildMission2Test();
+	}
+	else if (TestName.Equals(TEXT("GrenadeAI"), ESearchCase::IgnoreCase))
+	{
+		BuildGrenadeAITest();
+	}
+	else if (TestName.Equals(TEXT("Disparo"), ESearchCase::IgnoreCase))
+	{
+		BuildFiringTest();
 	}
 	else
 	{
@@ -118,6 +162,7 @@ void UBLAutoTestComponent::Screenshot(const FString& Name)
 {
 	const FString Path = TestDir() / FString::Printf(TEXT("%s_%s.png"), *CurrentTest, *Name);
 	FScreenshotRequest::RequestScreenshot(Path, false, false);
+	LastScreenshotFrame = GFrameCounter;
 	UE_LOG(LogBlackline, Display, TEXT("[BLTest] Captura: %s"), *Path);
 }
 
@@ -157,11 +202,17 @@ void UBLAutoTestComponent::TickComponent(float DeltaTime, ELevelTick TickType, F
 	}
 
 	// Rendimiento (se ignoran los primeros frames de carga)
-	if (StepIndex > 0)
+	const bool bCaptureFrame = LastScreenshotFrame > 0 && GFrameCounter - LastScreenshotFrame <= 3;
+	if (StepIndex > 0 && !bCaptureFrame)
 	{
 		FrameTimeAccum += DeltaTime;
 		++FrameCount;
 		WorstFrame = FMath::Max(WorstFrame, DeltaTime);
+		if (DeltaTime > 0.1f && Spikes.Num() < 12)
+		{
+			Spikes.Add(FString::Printf(TEXT("%.0f ms en %s (+%.1f s)"), DeltaTime * 1000.f, *Steps[StepIndex].Name, StepElapsed));
+			UE_LOG(LogBlackline, Display, TEXT("[BLTest] Pico: %s"), *Spikes.Last());
+		}
 	}
 
 	FStep& Step = Steps[StepIndex];
@@ -200,11 +251,22 @@ void UBLAutoTestComponent::Finish()
 	const float AvgMs = FrameCount > 0 ? float(FrameTimeAccum / FrameCount) * 1000.f : 0.f;
 	Results.Add(FString::Printf(TEXT("Rendimiento: %.2f ms medio (%.0f fps), peor frame %.1f ms, %d frames"),
 		AvgMs, AvgMs > 0.f ? 1000.f / AvgMs : 0.f, WorstFrame * 1000.f, FrameCount));
+	if (Spikes.Num() > 0)
+	{
+		Results.Add(TEXT("Picos (> 100 ms): ") + FString::Join(Spikes, TEXT("; ")));
+	}
 	Results.Add(FString::Printf(TEXT("RESUMEN %s: %d PASS, %d FAIL"), *CurrentTest, Passed, Failed));
 
 	UE_LOG(LogBlackline, Display, TEXT("[BLTest] %s"), *Results[Results.Num() - 2]);
 	UE_LOG(LogBlackline, Display, TEXT("[BLTest] %s"), *Results.Last());
 	FFileHelper::SaveStringArrayToFile(Results, *(TestDir() / CurrentTest + TEXT("_results.txt")), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+
+	// -BLPressContinue: tras una prueba de misión, pulsa F en el resumen (pasa a la siguiente misión; el log dice qué mapa carga)
+	if (FParse::Param(FCommandLine::Get(), TEXT("BLPressContinue")) && Char())
+	{
+		UE_LOG(LogBlackline, Display, TEXT("[BLTest] Pulsando continuar en el resumen"));
+		Char()->SetInteractHeld(true);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -327,13 +389,18 @@ void UBLAutoTestComponent::BuildMovementTest()
 void UBLAutoTestComponent::HandleShot(const FHitResult& Hit)
 {
 	HitsCount += Hit.bBlockingHit ? 1 : 0;
+	if (!Hit.bBlockingHit)
+	{
+		const FRotator Dir = (Hit.TraceEnd - Hit.TraceStart).Rotation();
+		MissInfo += FString::Printf(TEXT(" [fallo p%.1f y%.1f desde %s]"), Dir.Pitch, Dir.Yaw, *Hit.TraceStart.ToCompactString());
+	}
 	if (Hit.bBlockingHit)
 	{
 		LastSurface = int32(UBLSurfaceEffectsData::ResolveSurface(Hit));
 		LastHitInfo = FString::Printf(TEXT("%s/%s"), *GetNameSafe(Hit.GetActor()), *GetNameSafe(Hit.PhysMaterial.Get()));
 	}
 	// Captura en el instante de un disparo (con el fogonazo visible)
-	if (!PendingShotScreenshot.IsEmpty() && Char()->GetWeapon()->GetShotsFired() - ShotsAtStart == 5)
+	if (!PendingShotScreenshot.IsEmpty() && Char()->GetWeapon()->GetShotsFired() - ShotsAtStart == ShotScreenshotAt)
 	{
 		Screenshot(PendingShotScreenshot);
 		PendingShotScreenshot.Empty();
@@ -350,6 +417,7 @@ void UBLAutoTestComponent::BuildWeaponsTest()
 	{
 		ShotsAtStart = W->GetShotsFired();
 		HitsCount = 0;
+		MissInfo.Empty();
 		MagAtStart = W->GetMagazine();
 		ReserveAtStart = W->GetReserve();
 		PitchAtStart = PeakPitch = Pitch();
@@ -389,8 +457,8 @@ void UBLAutoTestComponent::BuildWeaponsTest()
 		{
 			const int32 Shots = W->GetShotsFired() - ShotsAtStart;
 			const float Rise = PeakPitch - PitchAtStart;
-			D = FString::Printf(TEXT("%d disparos en 1 s (esperado 12-14 a 750 RPM), impactos %d, cargador %d->%d, retroceso +%.1f grados"),
-				Shots, HitsCount, MagAtStart, W->GetMagazine(), Rise);
+			D = FString::Printf(TEXT("%d disparos en 1 s (esperado 12-14 a 750 RPM), impactos %d, cargador %d->%d, retroceso +%.1f grados%s"),
+				Shots, HitsCount, MagAtStart, W->GetMagazine(), Rise, *MissInfo);
 			return Shots >= 12 && Shots <= 14 && HitsCount == Shots && W->GetMagazine() == MagAtStart - Shots && Rise > 2.f && Rise < 12.f;
 		},
 		[this]() { Char()->SetFireHeld(false); } });
@@ -523,7 +591,10 @@ void UBLAutoTestComponent::AddSurfaceStep(const FString& Name, int32 ExpectedSur
 			{
 				FVector Origin, Extent;
 				Found[0]->GetActorBounds(false, Origin, Extent);
-				Origin.Z = FMath::Min(Origin.Z, Found[0]->GetActorLocation().Z + Extent.Z * 0.6f);
+				if (Extent.Z > 60.f)  // los blancos bajos (montículo de tierra) se apuntan al centro para no dar en el suelo
+				{
+					Origin.Z = FMath::Min(Origin.Z, Found[0]->GetActorLocation().Z + Extent.Z * 0.6f);
+				}
 				const FVector Eye = Char()->GetCamera()->GetComponentLocation();
 				Char()->GetController()->SetControlRotation((Origin - Eye).Rotation());
 			}

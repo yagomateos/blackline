@@ -68,9 +68,12 @@ personas, y el mando les habla desde un puesto en el oeste de la ciudad con el i
 |---|---|
 | **Sgto. Adrián Roca — "Sable 2-1"** | Protagonista. 34 años, once de servicio, dos despliegues anteriores. Callado, metódico, tira a no fallar. Habla poco por radio y nunca de más. No le gusta la palabra "asesor". |
 | **TORRE** | El puesto de mando de BLACKLINE en Kessra. La voz de la radio es la del **Capitán Elias Marot**, oficial de inteligencia: directo, sin adornos, siempre un paso por detrás de lo que de verdad está pasando y consciente de ello. |
-| **Tomas Varek** | Informante. Exempleado de logística del puerto que llevaba los manifiestos de carga del lado este. Lleva meses pasando a BLACKLINE fotos de cajas sin marcas y números de contenedor. Dice tener algo grande guardado en un disco duro. La madrugada de "Amanecer roto" deja de responder. |
+| **Tomas Varek** | Informante. Exempleado de logística del puerto que llevaba los manifiestos de carga del lado este. Lleva meses pasando a BLACKLINE fotos de cajas sin marcas y números de contenedor. Dice tener algo grande guardado en un disco duro. La madrugada de "Amanecer roto" deja de responder: la Columna lo ha descubierto y lo retiene en un bloque de viviendas junto a su refugio. Sable 2-1 lo saca de allí. |
 | **Darian Kost** | Jefe militar de la Columna en el puerto. Antiguo sargento del ejército de Varania. Es quien convirtió a los comités en una milicia. |
-| **"El inglés"** | Nadie sabe su nombre. Responsable de Corvane en Kessra. Solo aparece en fotos tomadas de lejos y en los manifiestos de Varek. |
+| **"El inglés"** | Nadie sabe su nombre. Responsable de Corvane en Kessra. Solo aparece en fotos tomadas de lejos y en los manifiestos de Varek. BLACKLINE le detiene en la azotea de la capitanía del puerto (misión 5). |
+| **Teniente Ilić** | Oficial del ejército de Varania al mando de la compañía que defiende el puente del ferrocarril (misión 4). Cansado, directo, desconfía de los "asesores" hasta que ve a uno en la trinchera. |
+| **Sable 2-2 y 2-3** | El resto del equipo de Roca. Entran con él en la terminal de contenedores en el asalto final (misión 5). |
+| **Operadores de Corvane** | Contratistas con equipo de gama alta sin marcas: placas, cascos con visor, radios. No gritan: se les reconoce por el silencio y por las granadas. Aparecen por primera vez en los muelles del casco viejo (misión 3). |
 
 ---
 
@@ -89,13 +92,13 @@ personas, y el mando les habla desde un puesto en el oeste de la ciudad con el i
 
 ## 5. Campaña (planificada)
 
-Solo la misión 1 está en el vertical slice; el resto es el plan de la Fase 4.
+Las cinco misiones están diseñadas y escritas (`Docs/Mision2_Manifiesto.md` ... `Docs/Mision5_LineaNegra.md`); la 1 es la probada.
 
 | # | Misión | Resumen |
 |---|---|---|
-| 1 | **Amanecer roto** | Inserción en la calle trasera, infiltración por el patio del puerto, control de carretera, combate en la calle principal y el local de Varek: el disco está, Varek no. *(Versión completa: asalto al bloque de viviendas, contraataque, un BTR que derrumba parte del edificio, huida por los tejados y extracción en el muelle.)* |
-| 2 | **Manifiesto** | El disco apunta a un almacén de la refinería. Infiltración nocturna para fotografiar el contenido de los contenedores... y lo que hay dentro no es munición. |
-| 3 | **Ría** | Rescate de Varek, retenido en el casco viejo. Combate casa por casa junto a la ría; primeros operadores de Corvane. |
+| 1 | **Amanecer roto** | Inserción en la calle trasera, infiltración por el patio del puerto, control de carretera, combate en la calle principal y el local de Varek: el disco está, Varek no. Lo retienen en el bloque de viviendas de enfrente: asalto piso a piso, rescate, contraataque de la Columna, un BTR que derrumba parte del edificio, huida por los tejados y extracción en el muelle con el helicóptero. *(El vertical slice llega hasta el disco.)* |
+| 2 | **Manifiesto** | El disco apunta a un almacén de la refinería. Infiltración nocturna para fotografiar el contenido de los contenedores... y lo que hay dentro no es munición: municiones merodeadoras de un lote de pruebas de Corvane. |
+| 3 | **Ría** | Varek reconoce en las fotos el "barco sin bandera". BLACKLINE lo busca entre los muelles del casco viejo, casa por casa junto a la ría; primeros operadores de Corvane. |
 | 4 | **Fuego cruzado** | La Columna lanza una ofensiva para cruzar la línea negra. Defensa de un puente con el ejército de Varania mientras TORRE intenta sacar las pruebas del país. |
 | 5 | **Línea negra** | Asalto final al puerto para capturar a "el inglés" y los registros de Corvane antes de que lo destruyan todo. |
 

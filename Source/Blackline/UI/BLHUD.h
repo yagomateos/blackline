@@ -45,8 +45,14 @@ private:
 	void DrawInteraction(const ABLCharacter* Char);
 	void DrawSubtitle(const ABLMissionDirector* Director);
 	void DrawCheckpointNotice();
+	/** Misión 2: destello y visor de la cámara al fotografiar; aviso de alarma. */
+	void DrawPhotoFlash();
+	void DrawAlarm(const ABLMissionDirector* Director);
+	/** Misión 4: ametralladora montada (retícula, calor, cómo bajarse). */
+	void DrawMountedGun(const ABLCharacter* Char);
 	void DrawDeath(const ABLCharacter* Char);
 	void DrawMissionComplete(const ABLMissionDirector* Director);
+	void DrawMissionFailed(const ABLMissionDirector* Director);
 
 	UPROPERTY() TObjectPtr<UFont> MonoFont;
 	UPROPERTY() TObjectPtr<UFont> TextFont;
@@ -56,5 +62,6 @@ private:
 	float AmmoAttention = 100.f;   // segundos desde la última acción con el arma
 	int32 LastShots = 0;
 	int32 LastMag = -1;
+	int32 LastGrenades = -1;
 	bool bWasReloading = false;
 };
